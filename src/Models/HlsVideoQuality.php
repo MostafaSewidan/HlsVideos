@@ -2,6 +2,7 @@
 
 namespace  HlsVideos\Models;
 
+use HlsVideos\Services\VideoService;
 use Illuminate\Database\Eloquent\Model;
 use  HlsVideos\Jobs\ConvertQualityJob;
 use Illuminate\Support\Facades\Storage;
@@ -28,7 +29,7 @@ class HlsVideoQuality extends Model
                 mkdir($videoQuality->process_folder_path, 0755, true);
             }
 
-            ConvertQualityJob::dispatch($videoQuality)->onQueue('default');;
+            ConvertQualityJob::dispatch($videoQuality,app('currentTenant'))->onQueue('default');;
         });
     }
 
@@ -39,7 +40,7 @@ class HlsVideoQuality extends Model
 
     public function getProcessFolderPathAttribute(){
 
-        return Storage::disk(config('hls-videos.temp_disk'))->path("{$this->hls_video_id}/{$this->quality}");
+        return Storage::disk(config('hls-videos.temp_disk'))->path(VideoService::getMediaPath()."{$this->hls_video_id}/{$this->quality}");
     }
 
     public function scopeNotReady($q){

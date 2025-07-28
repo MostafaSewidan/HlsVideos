@@ -17,13 +17,14 @@ class ConvertQualityJob implements ShouldQueue
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
 
-    public function __construct(protected HlsVideoQuality $hlsVideoQuality)
+    public function __construct(protected HlsVideoQuality $hlsVideoQuality,protected $tenant)
     {
     }
 
     public function handle()
     {
         try {
+            $this->tenant->makeCurrent();
             $quality = $this->hlsVideoQuality->quality;
             $video = $this->hlsVideoQuality->video;
 

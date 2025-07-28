@@ -106,7 +106,7 @@ class VideoConverted
          $masterPlaylist .= "#EXT-X-VERSION:3\n";
 
          foreach ($this->video->qualities as $quality) {
-            $qualityIndexPlaylistPath = "{$this->videoQuality->hls_video_id}/{$this->videoQuality->quality}/index.m3u8";
+            $qualityIndexPlaylistPath = VideoService::getMediaPath()."{$this->videoQuality->hls_video_id}/{$this->videoQuality->quality}/index.m3u8";
             if(Storage::disk(config('hls-videos.temp_disk'))->exists($qualityIndexPlaylistPath)){
                $fileContents = Storage::disk(config('hls-videos.temp_disk'))->get($qualityIndexPlaylistPath);
                // Extract the first #EXT-X-STREAM-INF line if available

@@ -62,25 +62,25 @@ class HlsVideo extends Model
 
     public function getThumbUrlAttribute(){
 
-        $thumbPath = "$this->id/thumb.jpg";
+        $thumbPath = VideoService::getMediaPath()."$this->id/thumb.jpg";
         return Storage::disk(config('hls-videos.thumb_disk'))->url($thumbPath);
     }
 
     public function getTempVideoAttribute(){
 
-        $path = "{$this->id}/{$this->file_name}";
+        $path = VideoService::getMediaPath()."{$this->id}/{$this->file_name}";
         return Storage::disk(config('hls-videos.temp_disk'))->exists($path) ? Storage::disk(config('hls-videos.temp_disk'))->path($path) : null;
     }
 
     public function getTempVideoFolderAttribute(){
 
-        $path = "{$this->id}";
+        $path = VideoService::getMediaPath()."{$this->id}";
         return Storage::disk(config('hls-videos.temp_disk'))->exists($path) ? Storage::disk(config('hls-videos.temp_disk'))->path($path) : null;
     }
 
     public function getTempVideoPathAttribute(){
 
-        return "{$this->id}/{$this->file_name}";
+        return VideoService::getMediaPath()."{$this->id}/{$this->file_name}";
     }
 
     public function getIsReadyAttribute(){

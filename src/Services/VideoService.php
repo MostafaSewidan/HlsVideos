@@ -20,8 +20,13 @@ class VideoService
             ->getFrameFromSeconds(3)
             ->export()
             ->toDisk(config('hls-videos.thumb_disk'))
-            ->save("$video->id/thumb.jpg");
+            ->save(VideoService::getMediaPath()."$video->id/thumb.jpg");
         }
+    }
+
+    static function getMediaPath()
+    {
+        return app('currentTenant')->media_folder.'/';
     }
 
     static function findById($id)
@@ -197,7 +202,7 @@ class VideoService
     {
         $video = HlsVideo::ready()->findOrFail($videoId);
 
-        $path = $video->id;
+        $path = VideoService::getMediaPath().$video->id;
         
         if($quality)
             $path .= "/$quality";
