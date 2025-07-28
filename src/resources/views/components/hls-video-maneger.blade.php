@@ -405,6 +405,7 @@
                             },
                             success: function(response) {
                                 setVideoOptionCard(response);
+                                resetVideo();
                             },
                             error: function(msg) {
                                 toastr["error"](msg[1]);

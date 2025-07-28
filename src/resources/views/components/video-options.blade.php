@@ -1,7 +1,7 @@
 <div>
     @switch($video?->status)
         @case(HlsVideos\Models\HlsVideo::READY)
-            <a href="javascript:;" onclick="deleteVideo('{{ route('hls.videos.delete', $video->id) }}')" class="btn btn-sm red">
+            <a href="javascript:;" onclick="deleteVideo('{{ route('hls.videos.delete', $video->id) }}')" class="btn btn-danger btn-xs">
                 <i class="fa fa-trash"></i>
             </a>
             <div class="col-md-12">
