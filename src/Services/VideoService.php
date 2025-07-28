@@ -78,7 +78,7 @@ class VideoService
         $disk = Storage::disk(config('hls-videos.temp_disk'));
 
         $videoId = $this->createUniqueVideoUuid();
-        $disk->putFileAs($videoId, $file, $fileName);
+        $disk->putFileAs((VideoService::getMediaPath()."$videoId"), $file, $fileName);
 
         if($deleteChunked){
             // Delete chunked file
