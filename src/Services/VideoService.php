@@ -29,6 +29,11 @@ class VideoService
         return app('currentTenant')->media_folder.'/';
     }
 
+    static function getSubDomain()
+    {
+        return app('currentTenant')->subdomain;
+    }
+
     static function findById($id)
     {
         return HlsVideo::find($id);
@@ -123,6 +128,8 @@ class VideoService
                     $fileName = $matches[2];
                     // If you have access to the route() helper, use it. Otherwise, build the URL manually:
                     $url = route(config('hls-videos.access_route_stream'), [$videoId, $q, $fileName]);
+                    
+                    $url = str_replace('cdn.',(VideoService::getSubDomain().'.'),$url);
                     return $matches[1] . $url;
                 },
                 $content

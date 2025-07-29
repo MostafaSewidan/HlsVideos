@@ -47,7 +47,7 @@ class VideoConverted
 
          if(!$this->video->qualities()->notReady()->count()){
 
-            Storage::disk(config('hls-videos.temp_disk'))->deleteDirectory($this->video->id);
+            Storage::disk(config('hls-videos.temp_disk'))->deleteDirectory(VideoService::getMediaPath().$this->video->id);
             Event::dispatch(new VideoConvertedEvent($this->video));
           }
       }
@@ -73,10 +73,11 @@ class VideoConverted
                   $fileName = $fileName[count($fileName) - 1];
                   // If you have access to the route() helper, use it. Otherwise, build the URL manually:
                   $url = route(config('hls-videos.access_route_stream'), [
-                  $this->videoQuality->hls_video_id, 
-                  $this->videoQuality->quality, 
-                  $fileName
-               ]);
+                     $this->videoQuality->hls_video_id, 
+                     $this->videoQuality->quality, 
+                     $fileName
+                  ]);
+                  $url = str_replace('cdn.',(VideoService::getSubDomain().'.'),$url);
                   return $matches[1] . $url;
             },
             $content
@@ -131,6 +132,8 @@ class VideoConverted
 
             $q = $quality->quality;
             $pathToFile = route(config('hls-videos.access_route_stream'), [$this->video->id, $q, 'vd.m3u8']);
+
+            $pathToFile = str_replace('cdn.',(VideoService::getSubDomain().'.'),$pathToFile);
             $masterPlaylist .= "$pathToFile\n";
          }
 

@@ -29,7 +29,7 @@ class HlsVideoQuality extends Model
                 mkdir($videoQuality->process_folder_path, 0755, true);
             }
 
-            ConvertQualityJob::dispatch($videoQuality,app('currentTenant'))->onQueue('default');;
+            ConvertQualityJob::dispatch($videoQuality,app('currentTenant'))->onQueue('default');
         });
     }
 
