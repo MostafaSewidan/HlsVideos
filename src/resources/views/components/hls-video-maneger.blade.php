@@ -327,6 +327,8 @@
                 // You can add custom options for parallelism and retries
                 parallelUploads: 5, // Limit to 5 parallel uploads
                 // Other useful options:
+                bundle: false, // must be false for chunked upload
+                limit: 1, // upload 1 chunk at a time
                 allowMultipleUploads: false
                 // - withCredentials: true (if you need to send credentials with requests)
             });
