@@ -30,7 +30,7 @@ class HlsVideo extends Model
         static::deleting(function ($video) {
             $video->qualities()->delete();
             foreach(config('hls-videos.storages') as $disk => $config){
-                Storage::disk($disk)->deleteDirectory($video->id);
+                Storage::disk($disk)->deleteDirectory(VideoService::getMediaPath().$video->id);
             }
         });
     }
