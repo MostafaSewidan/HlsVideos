@@ -24,6 +24,7 @@ class HlsVideo extends Model
         static::created(function ($video) {
             $videoService = new VideoService;
             $videoService->createThumb($video);
+            $videoService->getVideoDuration($video);
             $videoService->handleVideoQualities($video);
         });
 
