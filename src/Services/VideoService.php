@@ -30,10 +30,10 @@ class VideoService
             $stream = $video->stream_data;
             $stream['duration'] = FFMpeg::fromDisk(config('hls-videos.temp_disk'))
             ->open($video->temp_video_path)
-            ->getDuration();
+            ->getDurationInSeconds();
 
             $video->update(['stream_data' => $stream]);
-            
+
         } catch (\Exception $e) {
             // Log error but don't fail the upload
             \Log::warning("Could not extract duration for video {$video->id}: " . $e->getMessage());
