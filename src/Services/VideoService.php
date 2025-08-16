@@ -23,6 +23,22 @@ class VideoService
             ->save(VideoService::getMediaPath()."$video->id/thumb.jpg");
         }
     }
+    public function getVideoDuration(HlsVideo $video){
+
+        try {
+
+            $stream = $video->stream_data;
+            $stream['duration'] = FFMpeg::fromDisk(config('hls-videos.temp_disk'))
+            ->open($video->temp_video_path)
+            ->getDuration();
+
+            $video->update(['stream_data' => $stream]);
+            
+        } catch (\Exception $e) {
+            // Log error but don't fail the upload
+            \Log::warning("Could not extract duration for video {$video->id}: " . $e->getMessage());
+        }
+    }
 
     static function getMediaPath()
     {
