@@ -22,6 +22,11 @@ trait HasHlsVideo
         return $this->hlsVideos()->first();
     }
 
+    public function readyHlsVideo()
+    {
+        return $this->hlsVideos()->Ready()->limit(1);
+    }
+
     public function getReadyHlsVideo()
     {
         return $this->hlsVideos()->Ready()->first();
