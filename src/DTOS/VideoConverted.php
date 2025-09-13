@@ -38,6 +38,7 @@ class VideoConverted
    private function updateVideoUploaded()
    {
       $this->video->update(['status' => HlsVideo::READY]);
+      Event::dispatch(new VideoConvertedEvent($this->video, app('currentTenant')));
       $upcommingQuality = VideoService::getUpcommingQuality($this->video);
 
       if($upcommingQuality){
@@ -48,7 +49,6 @@ class VideoConverted
          if(!$this->video->qualities()->notReady()->count()){
 
             Storage::disk(config('hls-videos.temp_disk'))->deleteDirectory(VideoService::getMediaPath().$this->video->id);
-            Event::dispatch(new VideoConvertedEvent($this->video));
           }
       }
    }
