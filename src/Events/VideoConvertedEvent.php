@@ -1,5 +1,5 @@
 <?php
-namespace  HlsVideos\Events;
+namespace HlsVideos\Events;
 
 class VideoConvertedEvent
 {

@@ -1,7 +1,7 @@
 <?php
-namespace  HlsVideos\Providers;
+namespace HlsVideos\Providers;
 
-use HlsVideos\Components\VideoManeger;
+use HlsVideos\Components\{VideoManeger, Video};
 use Illuminate\Support\Facades\Blade;
 use Illuminate\Support\ServiceProvider;
 
@@ -21,9 +21,10 @@ class HlsVideoServiceProvider extends ServiceProvider
 
         // Migrations
         $this->loadMigrationsFrom(__DIR__.'/../Database/migrations');
-        
+
         // Register blade component
         Blade::component('hls-video-manager', VideoManeger::class);
+        Blade::component('hls-video', Video::class);
     }
 
     public function register()
