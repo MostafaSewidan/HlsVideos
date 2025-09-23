@@ -20,11 +20,11 @@
         height: auto;
         min-height: 200px;
         max-height: 100vh;
-        background-color: var(--video-bg);
+        background-color: transparent;
         overflow: hidden;
         box-shadow: 0 8px 32px var(--video-shadow-medium);
         transition: box-shadow 0.3s ease, transform 0.3s ease;
-        aspect-ratio: 15 / 6;
+        aspect-ratio: 10 / 6;
 
         --plyr-color-main: var(--video-player-main);
         --plyr-video-background: var(--video-bg);
