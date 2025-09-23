@@ -17,35 +17,31 @@
     .video-container {
         position: relative;
         width: 100%;
-        height: 100%;
+        height: auto;
         min-height: 200px;
         max-height: 100vh;
         background-color: var(--video-bg);
         overflow: hidden;
         box-shadow: 0 8px 32px var(--video-shadow-medium);
         transition: box-shadow 0.3s ease, transform 0.3s ease;
-        aspect-ratio: 16 / 9;
+        aspect-ratio: 15 / 6;
 
         --plyr-color-main: var(--video-player-main);
         --plyr-video-background: var(--video-bg);
     }
 
-    /* Ensure video container fits within iframe dimensions */
-    @media (max-aspect-ratio: 16/9) {
+    @media (max-width: 991px) {
         .video-container {
-            width: 100%;
-            height: auto;
-            aspect-ratio: 16 / 9;
+            aspect-ratio: 13 / 9;
         }
     }
 
-    @media (min-aspect-ratio: 16/9) {
+    @media (max-width: 576px) {
         .video-container {
-            width: auto;
-            height: 100%;
-            aspect-ratio: 16 / 9;
+            aspect-ratio: 7 / 10;
         }
     }
+
 
     .plyr__controls .plyr__controls__item:first-child {
         margin-left: auto !important;
