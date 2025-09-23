@@ -1,6 +1,5 @@
 @push('hls-styles')
     <link rel="stylesheet" href="https://releases.transloadit.com/uppy/v3.18.0/uppy.css">
-    <link rel="stylesheet" href="https://cdn.plyr.io/3.7.8/plyr.css" />
     <style>
         .loader2 {
             width: 175px;
@@ -180,6 +179,7 @@
             max-height: 75%;
         }
     </style>
+    @include('hls-videos::components._cssvideo')
 @endpush
 
 <div id="video-options-card"></div>
@@ -190,8 +190,6 @@
 
 @push('hls-scripts')
     <script src="https://releases.transloadit.com/uppy/v3.18.0/uppy.min.js"></script>
-    <script src="https://cdn.plyr.io/3.7.8/plyr.polyfilled.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
     <script>
         let uppy = null;
 
@@ -418,21 +416,9 @@
             });
         }
 
-        function videoPlayerIoRun(source) {
-            let video = document.getElementById('player');
-
-            if (Hls.isSupported()) {
-                const hls = new Hls();
-                hls.loadSource(source);
-                hls.attachMedia(video);
-            } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
-                video.src = source;
-            }
-
-            const player = new Plyr(video);
-        }
         $(document).ready(function() {
             refreshVideoViewContent();
         })
     </script>
+    @include('hls-videos::components._jsvideo')
 @endpush
