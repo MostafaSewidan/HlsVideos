@@ -18,15 +18,34 @@
         .video-container {
             position: relative;
             width: 100%;
-            max-width: 900px;
-            aspect-ratio: 16 / 9;
+            height: 100%;
+            min-height: 200px;
+            max-height: 100vh;
             background-color: var(--video-bg);
             overflow: hidden;
             box-shadow: 0 8px 32px var(--video-shadow-medium);
             transition: box-shadow 0.3s ease, transform 0.3s ease;
+            aspect-ratio: 16 / 9;
 
             --plyr-color-main: var(--video-player-main);
             --plyr-video-background: var(--video-bg);
+        }
+
+        /* Ensure video container fits within iframe dimensions */
+        @media (max-aspect-ratio: 16/9) {
+            .video-container {
+                width: 100%;
+                height: auto;
+                aspect-ratio: 16 / 9;
+            }
+        }
+
+        @media (min-aspect-ratio: 16/9) {
+            .video-container {
+                width: auto;
+                height: 100%;
+                aspect-ratio: 16 / 9;
+            }
         }
 
         .plyr__controls .plyr__controls__item:first-child {
@@ -54,11 +73,9 @@
             inset: 0;
             width: 100%;
             height: 100%;
-            object-fit: cover !important;
+            object-fit: contain !important;
             display: block;
         }
-
-
 
         .video-loading-overlay {
             position: absolute;
@@ -188,8 +205,6 @@
 
             if (Hls.isSupported()) {
                 const hls = new Hls();
-                console.log(source);
-
                 hls.loadSource(source ?? video.querySelector("source").src);
                 hls.attachMedia(video);
 
@@ -200,7 +215,6 @@
                         .map(l => l.height)
                         .filter((v, i, a) => a.indexOf(v) === i)
                         .sort((a, b) => b - a);
-                    console.log(availableQualities);
 
                     initPlyr(availableQualities, hls);
                 });
@@ -209,8 +223,6 @@
                 video.addEventListener("loadedmetadata", () => {
                     initPlyr([], null);
                 });
-            } else {
-                console.log("hls not supported");
             }
 
             // const player = new Plyr(video);
@@ -249,9 +261,8 @@
                 loop: "تشغيل متكرر",
             };
 
-            console.log(availableQualities);
             const player = new Plyr(video, {
-                i18n: "{{ locale() }}" === "ar" ? i18n_ar : {},
+                i18n: "{{ app()->getLocale() }}" === "ar" ? i18n_ar : {},
                 controls: [
                     "play-large",
                     "rewind",
@@ -284,7 +295,6 @@
                     }
                 }
             });
-            console.log('here');
 
             video.addEventListener("canplay", () => {
                 loader.style.display = "none";
