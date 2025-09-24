@@ -30,9 +30,14 @@
         // const player = new Plyr(video);
     }
 
+    function isIOS() {
+        return /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+    }
+
     function initPlyr(availableQualities, hls) {
         const video = document.getElementById("player");
         const loader = document.getElementById("video-loader");
+        const isIos = isIOS();
         const i18n_ar = {
             restart: "إعادة التشغيل",
             rewind: "رجوع 10 ثواني",
@@ -65,7 +70,19 @@
 
         const player = new Plyr(video, {
             i18n: "{{ app()->getLocale() }}" === "ar" ? i18n_ar : {},
-            controls: [
+            controls: isIos ? [
+                "play-large",
+                "rewind",
+                "play",
+                "fast-forward",
+                "progress",
+                "current-time",
+                "duration",
+                "mute",
+                "volume",
+                "settings"
+
+            ] : [
                 "play-large",
                 "rewind",
                 "play",
@@ -76,7 +93,7 @@
                 "mute",
                 "volume",
                 "settings",
-                "fullscreen",
+                "fullscreen"
             ],
             settings: ["quality", "speed", "captions"],
             tooltips: {
@@ -97,6 +114,10 @@
                 }
             }
         });
+
+        if (isIos) {
+            video.removeAttribute("playsinline");
+        }
 
         video.addEventListener("canplay", () => {
             loader.style.display = "none";
