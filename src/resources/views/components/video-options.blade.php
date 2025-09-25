@@ -5,17 +5,19 @@
                 class="btn btn-danger btn-xs">
                 <i class="fa fa-trash"></i>
             </a>
-            <div class="col-md-12">
-                <div class="video-container">
-                    <video id="player" playsinline controls poster="{{ $video->thumb_url }}">
-                        <source src="{{ route(config('hls-videos.access_route_stream'), [$video->id]) }}"
-                            type="application/x-mpegURL" />
-                    </video>
-                    <div class="video-loading-overlay" id="video-loader">
-                        <div class="spinner"></div>
+            @if (config('hls-videos.video_player_optionstatus'))
+                <div class="col-md-12">
+                    <div class="video-container">
+                        <video id="player" playsinline controls poster="{{ $video->thumb_url }}">
+                            <source src="{{ route(config('hls-videos.access_route_stream'), [$video->id]) }}"
+                                type="application/x-mpegURL" />
+                        </video>
+                        <div class="video-loading-overlay" id="video-loader">
+                            <div class="spinner"></div>
+                        </div>
                     </div>
                 </div>
-            </div>
+            @endif
         @break
 
         @case(HlsVideos\Models\HlsVideo::UPLOADED)
@@ -36,5 +38,6 @@
         @default
             <div id="drag-drop-area"></div>
         @break
+
     @endswitch
 </div>
