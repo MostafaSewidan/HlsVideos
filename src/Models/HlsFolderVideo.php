@@ -21,20 +21,40 @@ class HlsFolderVideo extends Pivot
         return $this->belongsTo(HlsVideo::class, 'hls_video_id');
     }
 
+    public static function hasDuplicateTitle(string $title, int $folderId, ?int $ignoreId = null): bool
+    {
+        return self::where('folder_id', $folderId)
+            ->where('title', $title)
+            ->when($ignoreId, fn($q) => $q->where('id', '!=', $ignoreId))
+            ->exists();
+    }
+
+    public function generateUniqueTitle(): string
+    {
+        $originalTitle = $this->title ?? pathinfo($this->video->original_file_name, PATHINFO_FILENAME);
+        $title = $originalTitle;
+        $counter = 1;
+
+        while (self::hasDuplicateTitle($title, $this->folder_id, $this->id)) {
+            $title = "{$originalTitle} ({$counter})";
+            $counter++;
+        }
+
+        return $title;
+    }
+
     protected static function boot()
     {
         parent::boot();
 
         static::creating(function ($model) {
-            $originalTitle = $model->title ?? pathinfo($model->video->original_file_name, PATHINFO_FILENAME);
-            $title = $originalTitle;
-            $counter = 1;
+            $model->title = $model->generateUniqueTitle();
+        });
 
-            while (self::where('folder_id', $model->folder_id)->where('title', $title)->exists()) {
-                $title = $originalTitle . " ({$counter})";
-                $counter++;
+        static::updating(function ($model) {
+            if ($model->isDirty('title')) {
+                $model->title = $model->generateUniqueTitle();
             }
-            $model->title = $title;
         });
 
         static::deleting(function ($model) {

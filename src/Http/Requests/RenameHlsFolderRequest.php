@@ -2,6 +2,7 @@
 
 namespace  HlsVideos\Http\Requests;
 
+use HlsVideos\Models\HlsFolder;
 use Illuminate\Foundation\Http\FormRequest;
 
 class RenameHlsFolderRequest extends FormRequest
@@ -15,7 +16,17 @@ class RenameHlsFolderRequest extends FormRequest
     {
         return [
             'folder_id' => 'required|exists:hls_folders,id',
-            'title' => 'required'
+            'title' => [
+                'required',
+                'string',
+                'max:255',
+                function ($attribute, $value, $fail) {
+                    $folder = HlsFolder::find($this->folder_id);
+                    if (HlsFolder::hasDuplicateTitle($value, $folder->parent_id, $folder->id)) {
+                        $fail(__('The same name is already used in this location'));
+                    }
+                },
+            ],
         ];
     }
 

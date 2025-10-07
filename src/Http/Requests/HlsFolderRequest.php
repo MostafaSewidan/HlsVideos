@@ -2,6 +2,7 @@
 
 namespace  HlsVideos\Http\Requests;
 
+use HlsVideos\Models\HlsFolder;
 use Illuminate\Foundation\Http\FormRequest;
 
 class HlsFolderRequest extends FormRequest
@@ -15,7 +16,16 @@ class HlsFolderRequest extends FormRequest
     {
         return [
             'parent_id' => 'required|exists:hls_folders,id',
-            'title' => 'required'
+            'title' => [
+                'required',
+                'string',
+                'max:255',
+                function ($attribute, $value, $fail) {
+                    if (HlsFolder::hasDuplicateTitle($value, $this->parent_id)) {
+                        $fail(__('The same name is already used in this location'));
+                    }
+                },
+            ],
         ];
     }
 

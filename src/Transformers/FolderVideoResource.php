@@ -25,8 +25,8 @@ class FolderVideoResource extends JsonResource
             'original_steam_quality' => $this->original_steam_quality,
             'stream_data' => $this->stream_data,
 
-            'created_at'    => date('d-m-Y', strtotime($this->created_at)),
-            'updated_at'    => date('d-m-Y', strtotime($this->updated_at)),
+            'created_at'    => date('d-m-Y', strtotime($this->pivot->created_at)),
+            'updated_at'    => date('d-m-Y', strtotime($this->pivot->updated_at)),
         ];
     }
 }

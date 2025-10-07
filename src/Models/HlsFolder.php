@@ -15,15 +15,20 @@ class HlsFolder extends Model
     {
         $breadcrumb = collect([]);
         $folder = $this;
+        $visitedIDS = [];
 
         while ($folder) {
+            if (in_array($folder->id, $visitedIDS)) {
+                break;
+            }
+
             $breadcrumb->prepend($folder);
+            $visitedIDS[] = $folder->id;
             $folder = $folder->parent;
         }
 
         return $breadcrumb;
     }
-
 
     public function videos()
     {
@@ -56,21 +61,41 @@ class HlsFolder extends Model
         return $query->with(['relatedFolders', 'videos']);
     }
 
+    public static function hasDuplicateTitle(string $title, int $parentId, ?int $ignoreId = null): bool
+    {
+        return self::where('parent_id', $parentId)
+            ->where('title', $title)
+            ->when($ignoreId, fn($q) => $q->where('id', '!=', $ignoreId))
+            ->exists();
+    }
+
+    public function generateUniqueTitle(): string
+    {
+        $originalTitle = $this->title;
+        $title = $originalTitle;
+        $counter = 1;
+
+        while (self::hasDuplicateTitle($title, $this->parent_id, $this->id)) {
+            $title = "{$originalTitle} ({$counter})";
+            $counter++;
+        }
+
+        return $title;
+    }
+
     protected static function boot()
     {
         parent::boot();
 
         static::creating(function ($model) {
-            $originalTitle = $model->title;
-            $title = $originalTitle;
-            if ($model->parent_id) {
-                $counter = 1;
-                while ($model->parent->relatedFolders()->where('title', $title)->exists()) {
-                    $title = $originalTitle . " ({$counter})";
-                    $counter++;
-                }
+            $model->title = $model->generateUniqueTitle();
+        });
+
+        static::updating(function ($model) {
+            // داله للتأكيد
+            if ($model->isDirty('title')) {
+                $model->title = $model->generateUniqueTitle();
             }
-            $model->title = $title;
         });
 
         static::deleting(function ($model) {

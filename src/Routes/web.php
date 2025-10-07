@@ -21,6 +21,7 @@ Route::name('hls.folders.')
     ->group(function () {
 
     Route::get('/list', [HlsFolderController::class, 'list'])->name('list');
+    Route::get('/search', [HlsFolderController::class, 'search'])->name('search');
     Route::post('/create', [HlsFolderController::class, 'create'])->name('create');
     Route::post('/rename', [HlsFolderController::class, 'rename'])->name('rename');
     Route::delete('/{id}/delete', [HlsFolderController::class, 'delete'])->name('delete');

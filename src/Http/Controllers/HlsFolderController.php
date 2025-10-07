@@ -7,9 +7,11 @@ use HlsVideos\Http\Requests\MoveFolderRequest;
 use HlsVideos\Http\Requests\RenameHlsFolderRequest;
 use Illuminate\Http\Request;
 use HlsVideos\Models\HlsFolder;
+use HlsVideos\Models\HlsFolderVideo;
 use HlsVideos\Transformers\FolderBreadcrumbResource;
 use HlsVideos\Transformers\FolderResource;
 use HlsVideos\Transformers\LiteFolderResource;
+use HlsVideos\Transformers\LiteFolderVideoResource;
 
 class HlsFolderController extends ApiController
 {
@@ -24,7 +26,7 @@ class HlsFolderController extends ApiController
 
         $folder = $folder ? new FolderResource($folder) : null;
         $breadcrumb = $folder ? FolderBreadcrumbResource::collection($folder->breadcrumb) : null;
-        
+
         return $this->response(['folder' => $folder, 'breadcrumb' => $breadcrumb]);
     }
 
@@ -59,6 +61,38 @@ class HlsFolderController extends ApiController
         $folder = $this->hls_folder->find($request->folder_id);
         $folder->update(['parent_id' => $request->new_parent_id]);
 
-        return $this->response();
+        return $this->response(['folder' => new LiteFolderResource($folder)]);
+    }
+
+    public function search(Request $request)
+    {
+        $search = trim($request->get('search'));
+
+        if (!$search) {
+            return $this->response(['results' => []]);
+        }
+
+        $folders = $this->hls_folder
+            ->with('parent')
+            ->where('title', 'LIKE', "%{$search}%")
+            ->get()
+            ->map(function ($folder) {
+                return [
+                    'folder' => new LiteFolderResource($folder),
+                    'breadcrumb' => FolderBreadcrumbResource::collection($folder->breadcrumb),
+                ];
+            });
+    
+        $videos = HlsFolderVideo::with('folder')
+            ->where('title', 'LIKE', "%{$search}%")
+            ->get()
+            ->map(function ($video) {
+                return [
+                    'video' => new LiteFolderVideoResource($video),
+                    'breadcrumb' => FolderBreadcrumbResource::collection($video->folder->breadcrumb),
+                ];
+            });
+
+        return $this->response(['folders' => $folders, 'videos' => $videos]);
     }
 }
