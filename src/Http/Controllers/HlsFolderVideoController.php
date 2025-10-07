@@ -37,8 +37,8 @@ class HlsFolderVideoController extends ApiController
         return DB::transaction(function () use ($request) {
             $pivotRecord = $this->hls_video_folder->find($request->folder_video_id);
 
-            $pivotRecord->delete();
             $this->attachVideo($request->new_parent_id, $pivotRecord);
+            $pivotRecord->delete();
 
             return $this->response();
         });
