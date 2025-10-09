@@ -104,6 +104,7 @@ class VideoService
         $disk = Storage::disk(config('hls-videos.temp_disk'));
         $disk->putFileAs((VideoService::getMediaPath()."$videoId"), $file, $fileName);
 
+        $video->qualities()->delete();
         (new VideoService())->handleVideoQualities($video);
     }
 
