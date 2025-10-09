@@ -6,6 +6,7 @@ use HlsVideos\DTOS\VideoConverted;
 use HlsVideos\Models\HlsVideo;
 use HlsVideos\Models\HlsVideoQuality;
 use HlsVideos\Services\Contracts\VideoQualityProcessorInterface;
+use HlsVideos\Services\VideoService;
 
 class UploadToStepsencoderService implements VideoQualityProcessorInterface
 {
@@ -15,7 +16,10 @@ class UploadToStepsencoderService implements VideoQualityProcessorInterface
 
     public function __construct()
     {
-        $this->headers = ['Authorization' => config('hls-videos.steps_encoder_token')];
+        $this->headers = [
+            'Authorization' => config('hls-videos.steps_encoder_token'),
+            'Accept' => 'application/json',
+        ];
     }
 
 
@@ -29,26 +33,45 @@ class UploadToStepsencoderService implements VideoQualityProcessorInterface
             'stream_data' => $stream_data
         ]);
 
+        $path = VideoService::getMediaPath()."{$this->video->id}/{$this->video->file_name}";
+        $disk = \Storage::disk(config('hls-videos.temp_disk'));
+
+        if (! $disk->exists($path)) {
+            throw new \Exception("Video file not found at path: {$path}");
+        }
+
+        // Get the full path and open as a resource stream
+        $fullPath = $disk->path($path);
+        $videoFileResource = fopen($fullPath, 'r');
+
         $client = new \GuzzleHttp\Client();
-        $response = $client->post("$nodeUrl/hls/videos/upload-from-server/{$this->video->id}", [
-            'headers' => $this->headers,
-            'allow_redirects' => true,
-            'multipart' => [
-                [
-                    'name' => 'file',
-                    'contents' => $videoFile,
-                ],
-                [
-                    'name' => 'tenant_id',
-                    'contents' => app('currentTenant')->id,
+
+        try {
+            $response = $client->post("$nodeUrl/hls/videos/upload-from-server/{$this->video->id}", [
+                'headers' => $this->headers,
+                'allow_redirects' => true,
+                'multipart' => [
+                    [
+                        'name' => 'file',
+                        'contents' => $videoFileResource,
+                        'filename' => $this->video->file_name,
+                    ],
+                    [
+                        'name' => 'tenant_id',
+                        'contents' => app('currentTenant')->id,
+                    ]
                 ]
-            ]
-        ]);
+            ]);
 
-        $this->video->qualities()->delete();
-        logger("UploadToStepsencoderService: ", [$response->getBody()->getContents()]);
+            logger("UploadToStepsencoderService: ", [$response->getBody()->getContents()]);
 
-        return new VideoConverted($quality, true);
+            return new VideoConverted($quality, true);
+        } finally {
+            // Always close the file resource
+            if (is_resource($videoFileResource)) {
+                fclose($videoFileResource);
+            }
+        }
     }
 
 
