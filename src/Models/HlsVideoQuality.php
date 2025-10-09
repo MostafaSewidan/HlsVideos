@@ -1,10 +1,10 @@
 <?php
 
-namespace  HlsVideos\Models;
+namespace HlsVideos\Models;
 
 use HlsVideos\Services\VideoService;
 use Illuminate\Database\Eloquent\Model;
-use  HlsVideos\Jobs\ConvertQualityJob;
+use HlsVideos\Jobs\ConvertQualityJob;
 use Illuminate\Support\Facades\Storage;
 
 class HlsVideoQuality extends Model
@@ -23,32 +23,30 @@ class HlsVideoQuality extends Model
         parent::boot();
 
         static::created(function ($videoQuality) {
-            
-            // Create directories
-            if (!is_dir($videoQuality->process_folder_path)) {
-                mkdir($videoQuality->process_folder_path, 0755, true);
-            }
-
-            ConvertQualityJob::dispatch($videoQuality,app('currentTenant'))->onQueue('default');
+            VideoService::dispatchConvertQualityJob($videoQuality);
         });
     }
 
-    public function video(){
+    public function video()
+    {
 
-        return $this->belongsTo(HlsVideo::class,'hls_video_id');
+        return $this->belongsTo(HlsVideo::class, 'hls_video_id');
     }
 
-    public function getProcessFolderPathAttribute(){
+    public function getProcessFolderPathAttribute()
+    {
 
         return Storage::disk(config('hls-videos.temp_disk'))->path(VideoService::getMediaPath()."{$this->hls_video_id}/{$this->quality}");
     }
 
-    public function scopeNotReady($q){
+    public function scopeNotReady($q)
+    {
 
         return $q->where('status', '!=', self::READY);
     }
 
-    public function updateStatusTo($status){
+    public function updateStatusTo($status)
+    {
 
         return $this->update(['status' => $status]);
     }

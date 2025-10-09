@@ -11,6 +11,9 @@ return [
     'thumb_disk' => env("HLS_VIDEO_THUMB_DISK", 'thumbnails'),
     'stream_disk' => env("HLS_VIDEO_STREAM_DISK", 'r2'),
     'video_player_optionstatus' => true,
+    'steps_encoder_token' => env("HLS_VIDEO_STEPS_ENCODER_TOKEN"),
+    'steps_encoder_urls' => [],
+    'tenant_model' => null,
     'storages' => [
         'r2' => [
             'disk_name' => 'r2',
