@@ -7,6 +7,7 @@ use FFMpeg;
 use Pion\Laravel\ChunkUpload\Handler\HandlerFactory;
 use Pion\Laravel\ChunkUpload\Receiver\FileReceiver;
 use Illuminate\Support\Facades\Storage;
+use HlsVideos\Jobs\ConvertQualityJob;
 
 
 class VideoService
@@ -92,6 +93,20 @@ class VideoService
         ];
     }
 
+    public function receiveFromServer($request, $videoId)
+    {
+        $video = HlsVideo::findOrFail($videoId);
+        $file = $request->file('file');
+        // Store the uploaded file
+        $extension = $extension ?? $file->getClientOriginalExtension();
+        $fileName = "vd.$extension";
+
+        $disk = Storage::disk(config('hls-videos.temp_disk'));
+        $disk->putFileAs((VideoService::getMediaPath()."$videoId"), $file, $fileName);
+
+        (new VideoService())->handleVideoQualities($video);
+    }
+
     public function handlingUploadedFile($file, $model = null, $extension = null, $originalFileName = null, $deleteChunked = true)
     {
 
@@ -166,24 +181,6 @@ class VideoService
 
     public function handleVideoQualities($video)
     {
-        // $videoStream = $this->getVideoInfo($video);
-        // $height = $videoStream['height'];
-        // // logger('config(hls-videos.qualities)',$videoStream);
-
-        // // Match height to quality label
-        // $quality = match (true) {
-        //     $height >= 1080 => '1080',
-        //     $height >= 720  => '720',
-        //     $height >= 480  => '480',
-        //     $height >= 360  => '360',
-        //     $height >= 144  => '144',
-        //     default         => 'original',
-        // };
-
-        // $video->update([
-        //     'original_steam_quality' => $quality,
-        //     'stream_data' => $videoStream,
-        // ]);
         $upcommingQuality = self::getUpcommingQuality($video);
 
         if ($upcommingQuality)
@@ -246,5 +243,15 @@ class VideoService
         } catch (\Exception $e) {
             abort(404);
         }
+    }
+
+    public static function dispatchConvertQualityJob($videoQuality): void
+    {
+        // Create directories
+        if (! is_dir($videoQuality->process_folder_path)) {
+            mkdir($videoQuality->process_folder_path, 0755, true);
+        }
+
+        ConvertQualityJob::dispatch($videoQuality, app('currentTenant'))->onQueue('default');
     }
 }
