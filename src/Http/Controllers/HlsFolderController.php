@@ -10,8 +10,8 @@ use HlsVideos\Models\HlsFolder;
 use HlsVideos\Models\HlsFolderVideo;
 use HlsVideos\Transformers\FolderBreadcrumbResource;
 use HlsVideos\Transformers\FolderResource;
+use HlsVideos\Transformers\FolderVideoResource;
 use HlsVideos\Transformers\LiteFolderResource;
-use HlsVideos\Transformers\LiteFolderVideoResource;
 
 class HlsFolderController extends ApiController
 {
@@ -73,8 +73,8 @@ class HlsFolderController extends ApiController
         }
 
         $folders = $this->hls_folder
-            ->with('parent')
             ->where('title', 'LIKE', "%{$search}%")
+            ->with('parent')
             ->get()
             ->map(function ($folder) {
                 return [
@@ -82,14 +82,17 @@ class HlsFolderController extends ApiController
                     'breadcrumb' => FolderBreadcrumbResource::collection($folder->breadcrumb),
                 ];
             });
-    
-        $videos = HlsFolderVideo::with('folder')
+
+        $videos = HlsFolderVideo::with(['folder', 'video'])
             ->where('title', 'LIKE', "%{$search}%")
             ->get()
-            ->map(function ($video) {
+            ->map(function ($pivot) {
+                $video = $pivot->video;
+                $video->setRelation('pivot', $pivot);
+
                 return [
-                    'video' => new LiteFolderVideoResource($video),
-                    'breadcrumb' => FolderBreadcrumbResource::collection($video->folder->breadcrumb),
+                    'video' => new FolderVideoResource($video),
+                    'breadcrumb' => FolderBreadcrumbResource::collection($pivot->folder->breadcrumb),
                 ];
             });
 

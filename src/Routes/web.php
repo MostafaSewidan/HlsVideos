@@ -29,6 +29,7 @@ Route::name('hls.folders.')
 
     Route::name('videos.')->prefix('videos')->group(function () {
 
+        Route::post('/upload', [HlsFolderVideoController::class, 'upload'])->name('upload');
         Route::post('/move', [HlsFolderVideoController::class, 'move'])->name('move');
         Route::post('/copy', [HlsFolderVideoController::class, 'copy'])->name('copy');
         Route::post('/rename', [HlsFolderVideoController::class, 'rename'])->name('move');

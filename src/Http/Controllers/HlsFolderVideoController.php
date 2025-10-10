@@ -4,6 +4,7 @@ namespace HlsVideos\Http\Controllers;
 
 use HlsVideos\Http\Requests\CopyMoveVideoRequest;
 use HlsVideos\Http\Requests\RenameFolderVideoRequest;
+use HlsVideos\Http\Requests\UploadFolderVideoRequest;
 use HlsVideos\Models\HlsFolder;
 use HlsVideos\Models\HlsFolderVideo;
 use Illuminate\Support\Facades\DB;
@@ -13,6 +14,22 @@ class HlsFolderVideoController extends ApiController
     public function __construct(
         protected HlsFolderVideo $hls_video_folder
     ) {}
+
+    public function upload(UploadFolderVideoRequest $request)
+    {
+        return DB::transaction(function () use ($request) {
+            //TODO upload video
+            // $video = new HlsVideo();
+
+            // $folder = HlsFolder::find($request->folder_id);
+
+            // $folder->videos()->attach(
+            //     $video->id,
+            //     ['title' => $video->original_file_name]
+            // );
+            return $this->response();
+        });
+    }
 
     public function rename(RenameFolderVideoRequest $request)
     {
