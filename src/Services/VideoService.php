@@ -253,10 +253,11 @@ class VideoService
 
             if ($file == 'vd.m3u8') {
 
+                $replacePath = VideoService::getMediaPath().$videoId;
                 $subdomain = VideoService::getSubDomain();
 
                 $oldTsFilesUrl = "https://$subdomain.stepsio.com/api/vd/{$videoId}/stream/{$quality}";
-                $newTsFilesUrl = "http://stepsio-stream.org/$path/{$quality}";
+                $newTsFilesUrl = "http://stepsio-stream.org/$replacePath/{$quality}";
                 $content = str_replace($oldTsFilesUrl, $newTsFilesUrl, $content);
             }
 
