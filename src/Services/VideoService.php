@@ -257,7 +257,7 @@ class VideoService
                 $subdomain = VideoService::getSubDomain();
 
                 $oldTsFilesUrl = "https://$subdomain.stepsio.com/api/vd/{$videoId}/stream/{$quality}";
-                $newTsFilesUrl = "http://stepsio-stream.org/$replacePath/{$quality}";
+                $newTsFilesUrl = "https://stepsio-stream.org/$replacePath/{$quality}";
                 $content = str_replace($oldTsFilesUrl, $newTsFilesUrl, $content);
             }
 
