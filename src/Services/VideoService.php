@@ -224,7 +224,7 @@ class VideoService
         ];
     }
 
-    static function getStreamTemporaryLink($videoId, $quality = null, $file = null)
+    static function getStreamTemporaryLink($videoId, $quality = null, $file = null, $domain = null)
     {
         try {
             $path = VideoService::getMediaPath().$videoId;
@@ -237,10 +237,36 @@ class VideoService
             else
                 $path .= "/index.m3u8";
 
-            return Storage::disk(config('hls-videos.stream_disk'))->temporaryUrl(
-                $path,
-                now()->addMinutes(5) // signed URL valid for 15 minutes
-            );
+            $disk = Storage::disk(config('hls-videos.stream_disk'));
+
+            $content = $disk->get($path);
+
+            // Determine content type based on file extension
+            $contentType = 'application/vnd.apple.mpegurl'; // default for .m3u8
+            if ($file) {
+                if (str_ends_with($file, '.ts')) {
+                    $contentType = 'video/mp2t';
+                } elseif (str_ends_with($file, '.m3u8')) {
+                    $contentType = 'application/vnd.apple.mpegurl';
+                }
+            }
+
+            if ($file == 'vd.m3u8') {
+
+                $subdomain = VideoService::getSubDomain();
+
+                $oldTsFilesUrl = "https://$subdomain.stepsio.com/api/vd/{$videoId}/stream/{$quality}";
+                $newTsFilesUrl = "http://stepsio-stream.org/$path/{$quality}";
+                $content = str_replace($oldTsFilesUrl, $newTsFilesUrl, $content);
+            }
+
+            return response($content, 200, [
+                'Content-Type' => $contentType,
+                'Cache-Control' => 'no-cache, no-store, must-revalidate',
+                'Pragma' => 'no-cache',
+                'Expires' => '0',
+            ]);
+
         } catch (\Exception $e) {
             abort(404);
         }
