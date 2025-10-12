@@ -63,7 +63,7 @@ class UploadToStepsencoderService implements VideoQualityProcessorInterface
                 ]
             ]);
 
-            logger("UploadToStepsencoderService: ", [$response->getBody()->getContents()]);
+            \Storage::disk(config('hls-videos.temp_disk'))->deleteDirectory(VideoService::getMediaPath().$this->video->id);
 
             return new VideoConverted($quality, true);
         } finally {
