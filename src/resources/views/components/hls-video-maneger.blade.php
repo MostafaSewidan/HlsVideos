@@ -206,7 +206,7 @@
             uppy = new Uppy.Uppy({
                 restrictions: {
                     maxNumberOfFiles: 1, // ✅ Allow only one file
-                    maxFileSize: 1000000000, // 50MB
+                    maxFileSize: 1200 * 1024 * 1024, // 50MB
                     allowedFileTypes: [
                         'video/*' // ✅ Accept ALL video formats
                     ]
