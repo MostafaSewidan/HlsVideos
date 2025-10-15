@@ -38,7 +38,8 @@ class HlsFolder extends Model
             'folder_id',
             'hls_video_id'
         )->using(HlsFolderVideo::class)   //! مهم عشان يعدي علي البوت بتاع موديل HlsFolderVideo
-            ->withPivot('id', 'title');
+            ->withPivot(['id', 'title', 'created_at', 'updated_at'])
+            ->withTimestamps();
     }
 
     public function parent()

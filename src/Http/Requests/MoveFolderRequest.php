@@ -14,7 +14,8 @@ class MoveFolderRequest extends FormRequest
     public function rules()
     {
         return [
-            'folder_id' => 'required|exists:hls_folders,id',
+            'folder_ids' => 'required|array',
+            'folder_ids.*' => 'required|exists:hls_folders,id',
             'new_parent_id' => 'required|exists:hls_folders,id'
         ];
     }

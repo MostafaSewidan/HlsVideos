@@ -192,17 +192,22 @@
     <script src="https://releases.transloadit.com/uppy/v3.18.0/uppy.min.js"></script>
     <script>
         let uppy = null;
-
-        let modelType = "{{ str_replace('\\', '\\\\', get_class($model)) }}";
-        let modelId = "{{ $model->id }}";
+        let modelType = "{{ $model ? str_replace('\\', '\\\\', get_class($model)) : null }}";
+        let modelId = "{{ $model?->id }}";
         @if ($video?->id)
             let videoId = "{{ $video?->id }}";
         @else
             let videoId = null;
         @endif
 
-
         function setupVideoUpload() {
+            var folderIdInput = document.getElementById("current_folder_id");
+            
+            var folderId = null;
+            if(folderIdInput) {
+                folderId = folderIdInput.value;
+            }
+
             uppy = new Uppy.Uppy({
                 restrictions: {
                     maxNumberOfFiles: 1, // ✅ Allow only one file
@@ -309,8 +314,9 @@
 
             // Set meta before upload
             uppy.setMeta({
-                model_type: "{{ str_replace('\\', '\\\\', get_class($model)) }}",
-                model_id: "{{ $model->id }}",
+                model_type: "{{ $model ? str_replace('\\', '\\\\', get_class($model)) : null }}",
+                model_id: "{{ $model?->id }}",
+                folder_id: folderId,
             });
 
             // Add XHRUpload plugin for chunk upload handling
@@ -331,11 +337,123 @@
                 // - withCredentials: true (if you need to send credentials with requests)
             });
 
+            // ========== إضافة أحداث الرفع ==========
+
+            uppy.on('upload', (data) => {
+                fireVideoStartedUploadingEvent(data);
+            });
+
+            uppy.on('upload-progress', (file, progress) => {
+                fireVideoUploadProgressEvent(file, progress);
+            });
+
             uppy.on('upload-success', (file, response) => {
                 videoId = response.body.video_id;
                 setVideoOptionCard(response.body);
+                fireVideoUploadCompleteEvent(file, response);
+            });
+
+            uppy.on('upload-error', (file, error, response) => {
+                fireVideoUploadErrorEvent(file, error, response);
             });
         }
+
+        // ========== دوال إطلاق الأحداث ==========
+
+        function fireVideoStartedUploadingEvent(uploadData) {
+            const files = uppy.getFiles();
+            const eventData = {
+                files: files.map(file => ({
+                    name: file.name,
+                    size: file.size,
+                    type: file.type,
+                    data: file.data
+                })),
+                uploadId: Date.now().toString(),
+                timestamp: new Date().toISOString(),
+                totalFiles: files.length,
+                totalSize: files.reduce((total, file) => total + file.size, 0)
+            };
+
+            const event = new CustomEvent('videoStartedUploading', {
+                detail: eventData,
+                bubbles: true,
+                cancelable: true
+            });
+
+            document.dispatchEvent(event);
+        }
+
+        function fireVideoUploadProgressEvent(file, progress) {
+            const eventData = {
+                file: {
+                    id: file.id,
+                    name: file.name,
+                    size: file.size,
+                    type: file.type
+                },
+                progress: progress,
+                uploadId: Date.now().toString(),
+                timestamp: new Date().toISOString()
+            };
+
+            const event = new CustomEvent('videoUploadProgress', {
+                detail: eventData,
+                bubbles: true,
+                cancelable: true
+            });
+
+            document.dispatchEvent(event);
+        }
+
+        function fireVideoUploadCompleteEvent(file, response) {
+            const eventData = {
+                file: {
+                    id: file.id,
+                    name: file.name,
+                    size: file.size,
+                    type: file.type
+                },
+                response: response,
+                videoId: response.body.video_id,
+                uploadId: Date.now().toString(),
+                timestamp: new Date().toISOString()
+            };
+
+            const event = new CustomEvent('videoUploadComplete', {
+                detail: eventData,
+                bubbles: true,
+                cancelable: true
+            });
+
+            document.dispatchEvent(event);
+        }
+
+        function fireVideoUploadErrorEvent(file, error, response) {
+            const eventData = {
+                file: {
+                    id: file.id,
+                    name: file.name,
+                    size: file.size,
+                    type: file.type
+                },
+                error: error,
+                response: response,
+                uploadId: Date.now().toString(),
+                timestamp: new Date().toISOString()
+            };
+
+            const event = new CustomEvent('videoUploadError', {
+                detail: eventData,
+                bubbles: true,
+                cancelable: true
+            });
+
+            document.dispatchEvent(event);
+            console.error('videoUploadError event fired:', eventData);
+        }
+
+        // ========== الدوال الحالية ==========
 
         function refreshVideoViewContent() {
             if (videoId) {

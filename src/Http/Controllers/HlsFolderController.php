@@ -24,10 +24,13 @@ class HlsFolderController extends ApiController
         else
             $folder = $this->hls_folder->withRelations()->masters()->first();
 
-        $folder = $folder ? new FolderResource($folder) : null;
-        $breadcrumb = $folder ? FolderBreadcrumbResource::collection($folder->breadcrumb) : null;
-
-        return $this->response(['folder' => $folder, 'breadcrumb' => $breadcrumb]);
+        $videos = $folder->videos()->orderByDesc('created_at')->paginate(30);
+        return $this->response([
+            'folder' => new FolderResource($folder),
+            'folders' => LiteFolderResource::collection($folder->relatedFolders),
+            'videos' => FolderVideoResource::collection($videos)->response()->getData(true),
+            'breadcrumb' => FolderBreadcrumbResource::collection($folder->breadcrumb),
+        ]);
     }
 
     public function create(HlsFolderRequest $request)
@@ -46,20 +49,19 @@ class HlsFolderController extends ApiController
         return $this->response(['folder' => new LiteFolderResource($folder)]);
     }
 
-    public function delete($id)
+    public function delete(Request $request)
     {
-        $folder = $this->hls_folder->find($id);
-        if (!$folder)
-            return $this->error('Folder not found');
+        $this->hls_folder->whereIn('id', (array)$request->ids)->delete();
 
-        $folder->delete();
         return $this->response();
     }
 
     public function move(MoveFolderRequest $request)
     {
-        $folder = $this->hls_folder->find($request->folder_id);
-        $folder->update(['parent_id' => $request->new_parent_id]);
+        foreach ($request->folder_ids as $id) {
+            $folder = $this->hls_folder->find($id);
+            $folder->update(['parent_id' => $request->new_parent_id]);
+        }
 
         return $this->response(['folder' => new LiteFolderResource($folder)]);
     }
@@ -83,6 +85,7 @@ class HlsFolderController extends ApiController
                 ];
             });
 
+        //TODO add pagination
         $videos = HlsFolderVideo::with(['folder', 'video'])
             ->where('title', 'LIKE', "%{$search}%")
             ->get()

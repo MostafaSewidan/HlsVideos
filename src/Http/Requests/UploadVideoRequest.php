@@ -16,6 +16,7 @@ class UploadVideoRequest extends FormRequest
 
         return [
             'file' => 'required', // 10MB max per chunk
+            'folder_id' => 'nullable|exists:hls_folders,id',
             'chunk' => 'nullable|integer',
             'chunks' => 'nullable|integer',
         ];

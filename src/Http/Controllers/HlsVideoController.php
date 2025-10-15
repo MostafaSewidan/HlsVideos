@@ -22,7 +22,7 @@ class HlsVideoController extends Controller
             if($request->model_type && $request->model_id)
                 $model = $request->model_type::find($request->model_id);
 
-            $receiver = $this->videoService->receiveVideo($request,$model);
+            $receiver = $this->videoService->receiveVideo($request,$model, $request->folder_id);
 
             if ($receiver && $receiver['status']) {
                 if(isset($receiver['video']))

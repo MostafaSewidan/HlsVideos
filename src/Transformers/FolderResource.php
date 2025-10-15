@@ -18,8 +18,6 @@ class FolderResource extends JsonResource
             'id' => $this->id,
             'parent_id' => $this->parent_id,
             'title' => $this->title,
-            'folders' => LiteFolderResource::collection($this->relatedFolders),
-            'videos' => FolderVideoResource::collection($this->videos),
             'created_at'    => date('d-m-Y', strtotime($this->created_at)),
             'updated_at'    => date('d-m-Y', strtotime($this->updated_at)),
         ];

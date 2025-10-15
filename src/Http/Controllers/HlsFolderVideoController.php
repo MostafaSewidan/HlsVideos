@@ -4,32 +4,16 @@ namespace HlsVideos\Http\Controllers;
 
 use HlsVideos\Http\Requests\CopyMoveVideoRequest;
 use HlsVideos\Http\Requests\RenameFolderVideoRequest;
-use HlsVideos\Http\Requests\UploadFolderVideoRequest;
 use HlsVideos\Models\HlsFolder;
 use HlsVideos\Models\HlsFolderVideo;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Http\Request;
 
 class HlsFolderVideoController extends ApiController
 {
     public function __construct(
         protected HlsFolderVideo $hls_video_folder
     ) {}
-
-    public function upload(UploadFolderVideoRequest $request)
-    {
-        return DB::transaction(function () use ($request) {
-            //TODO upload video
-            // $video = new HlsVideo();
-
-            // $folder = HlsFolder::find($request->folder_id);
-
-            // $folder->videos()->attach(
-            //     $video->id,
-            //     ['title' => $video->original_file_name]
-            // );
-            return $this->response();
-        });
-    }
 
     public function rename(RenameFolderVideoRequest $request)
     {
@@ -39,23 +23,26 @@ class HlsFolderVideoController extends ApiController
         return $this->response();
     }
 
-    public function delete($id)
+    public function delete(Request $request)
     {
-        $pivotRecord = $this->hls_video_folder->find($id);
-        if (!$pivotRecord)
-            return $this->error('Video not found');
+        $this->hls_video_folder->whereIn('id', (array)$request->ids)->delete();
 
-        $pivotRecord->delete();
         return $this->response();
     }
 
     public function move(CopyMoveVideoRequest $request)
     {
         return DB::transaction(function () use ($request) {
-            $pivotRecord = $this->hls_video_folder->find($request->folder_video_id);
+            foreach ($request->folder_video_ids as $id) {
+                $pivotRecord = $this->hls_video_folder->find($id);
 
-            $this->attachVideo($request->new_parent_id, $pivotRecord);
-            $pivotRecord->delete();
+                if (!$pivotRecord) {
+                    continue;
+                }
+
+                $this->attachVideo($request->new_parent_id, $pivotRecord);
+                $pivotRecord->delete();
+            }
 
             return $this->response();
         });
@@ -64,13 +51,20 @@ class HlsFolderVideoController extends ApiController
     public function copy(CopyMoveVideoRequest $request)
     {
         return DB::transaction(function () use ($request) {
-            $pivotRecord = $this->hls_video_folder->find($request->folder_video_id);
+            foreach ($request->folder_video_ids as $id) {
+                $pivotRecord = $this->hls_video_folder->find($id);
 
-            $this->attachVideo($request->new_parent_id, $pivotRecord);
+                if (!$pivotRecord) {
+                    continue;
+                }
+
+                $this->attachVideo($request->new_parent_id, $pivotRecord);
+            }
 
             return $this->response();
         });
     }
+
 
     /**
      * Attach video to a folder with a given pivot record's title.

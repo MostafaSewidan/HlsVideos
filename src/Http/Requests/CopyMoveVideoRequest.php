@@ -14,7 +14,8 @@ class CopyMoveVideoRequest extends FormRequest
     public function rules()
     {
         return [
-            'folder_video_id' => 'required|exists:hls_folder_video,id',
+            'folder_video_ids' => 'required|array',
+            'folder_video_ids.*' => 'required|exists:hls_folder_video,id',
             'new_parent_id' => 'required|exists:hls_folders,id'
         ];
     }

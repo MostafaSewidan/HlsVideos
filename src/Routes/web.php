@@ -24,16 +24,15 @@ Route::name('hls.folders.')
     Route::get('/search', [HlsFolderController::class, 'search'])->name('search');
     Route::post('/create', [HlsFolderController::class, 'create'])->name('create');
     Route::post('/rename', [HlsFolderController::class, 'rename'])->name('rename');
-    Route::delete('/{id}/delete', [HlsFolderController::class, 'delete'])->name('delete');
+    Route::delete('/delete', [HlsFolderController::class, 'delete'])->name('delete');
     Route::post('/move', [HlsFolderController::class, 'move'])->name('move');
 
     Route::name('videos.')->prefix('videos')->group(function () {
 
-        Route::post('/upload', [HlsFolderVideoController::class, 'upload'])->name('upload');
         Route::post('/move', [HlsFolderVideoController::class, 'move'])->name('move');
         Route::post('/copy', [HlsFolderVideoController::class, 'copy'])->name('copy');
         Route::post('/rename', [HlsFolderVideoController::class, 'rename'])->name('move');
-        Route::delete('/{id}/delete', [HlsFolderVideoController::class, 'delete'])->name('delete');
+        Route::delete('/delete', [HlsFolderVideoController::class, 'delete'])->name('delete');
     });
 
 });
