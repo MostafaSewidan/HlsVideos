@@ -456,7 +456,9 @@
         // ========== الدوال الحالية ==========
 
         function refreshVideoViewContent() {
-            if (videoId) {
+            var folderIdInput = document.getElementById("current_folder_id");
+            
+            if (videoId && !folderIdInput && !folderIdInput?.value) {
                 var url = '{{ route('hls.videos.options', ':id') }}';
                 url = url.replace(':id', videoId);
             } else {

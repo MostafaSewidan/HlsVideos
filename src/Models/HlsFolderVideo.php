@@ -64,4 +64,18 @@ class HlsFolderVideo extends Pivot
             }
         });
     }
+
+    protected static function booted()
+    {
+        parent::booted();
+
+        static::addGlobalScope('checkSharedFolders', function ($query) {
+            $hlsFolderRepository = config('hls-videos.repositories.hls_folder');
+
+            if (class_exists($hlsFolderRepository) && method_exists($hlsFolderRepository, 'checkSharedFolders') && $hlsFolderRepository::isSharedFolders()) {
+                $allSharedIds = $hlsFolderRepository::allSharedIds();
+                $query->whereIn('folder_id', $allSharedIds);
+            }
+        });
+    }
 }

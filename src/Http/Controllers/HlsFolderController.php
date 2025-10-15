@@ -15,21 +15,30 @@ use HlsVideos\Transformers\LiteFolderResource;
 
 class HlsFolderController extends ApiController
 {
-    public function __construct(protected HlsFolder $hls_folder) {}
+    protected $repository;
+
+    public function __construct(protected HlsFolder $hls_folder)
+    {
+        $this->repository = config('hls-videos.repositories.hls_folder');
+    }
 
     public function list(Request $request)
     {
         if ($request->id)
-            $folder = $this->hls_folder->withRelations()->find($request->id);
+            $folder = $this->hls_folder->find($request->id);
         else
-            $folder = $this->hls_folder->withRelations()->masters()->first();
+            $folder = $this->repository::masters($this->hls_folder)->first();
 
-        $videos = $folder->videos()->orderByDesc('created_at')->paginate(30);
+        $folders = $folder?->relatedFolders ?? $this->repository::mainSharedFolders($this->hls_folder)->get();
+        $videos = $folder ? $folder->videos()->orderByDesc('created_at')->paginate(30) : collect([]);
+        $breadcrumb = $folder?->breadcrumb ?? collect([]);
+
         return $this->response([
-            'folder' => new FolderResource($folder),
-            'folders' => LiteFolderResource::collection($folder->relatedFolders),
+            'folder' => $folder ? new FolderResource($folder) : null, // if null means shared only
+            'folders' => LiteFolderResource::collection($folders),
             'videos' => FolderVideoResource::collection($videos)->response()->getData(true),
-            'breadcrumb' => FolderBreadcrumbResource::collection($folder->breadcrumb),
+            'breadcrumb' => FolderBreadcrumbResource::collection($breadcrumb),
+            'is_shared_mode' => $this->repository::isSharedFolders(),
         ]);
     }
 
@@ -85,20 +94,25 @@ class HlsFolderController extends ApiController
                 ];
             });
 
-        //TODO add pagination
-        $videos = HlsFolderVideo::with(['folder', 'video'])
+        $videosPaginator = HlsFolderVideo::with(['folder', 'video'])
             ->where('title', 'LIKE', "%{$search}%")
-            ->get()
-            ->map(function ($pivot) {
-                $video = $pivot->video;
-                $video->setRelation('pivot', $pivot);
+            ->orderByDesc('created_at')
+            ->paginate(10)
+            ->appends(['search' => $search]); // or any page size you prefer
+            
+        $videos = $videosPaginator->getCollection()->map(function ($pivot) {
+            $video = $pivot->video;
+            $video->setRelation('pivot', $pivot);
 
-                return [
-                    'video' => new FolderVideoResource($video),
-                    'breadcrumb' => FolderBreadcrumbResource::collection($pivot->folder->breadcrumb),
-                ];
-            });
+            return [
+                'video' => new FolderVideoResource($video),
+                'breadcrumb' => FolderBreadcrumbResource::collection($pivot->folder->breadcrumb),
+            ];
+        });
 
-        return $this->response(['folders' => $folders, 'videos' => $videos]);
+        // Replace the collection with the transformed data
+        $videosPaginator->setCollection($videos);
+
+        return $this->response(['folders' => $folders, 'videos' => $videosPaginator->toArray()]);
     }
 }

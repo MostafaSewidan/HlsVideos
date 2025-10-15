@@ -1,5 +1,6 @@
 <?php
 
+use HlsVideos\Repositories\HlsFolderRepository;
 use HlsVideos\Services\Qualities\Mp4ToService;
 use HlsVideos\Services\Storages\R2StorageService;
 
@@ -12,6 +13,9 @@ return [
     'thumb_disk' => env("HLS_VIDEO_THUMB_DISK", 'thumbnails'),
     'stream_disk' => env("HLS_VIDEO_STREAM_DISK", 'r2'),
     'video_player_optionstatus' => true,
+    'repositories' => [
+        'hls_folder' => HlsFolderRepository::class
+    ],
     'storages' => [
         'r2' => [
             'disk_name' => 'r2',

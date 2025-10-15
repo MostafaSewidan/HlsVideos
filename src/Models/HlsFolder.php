@@ -11,20 +11,45 @@ class HlsFolder extends Model
 
     protected $fillable = ['title', 'parent_id'];
 
+    public function getAllChildrenIdsAttribute()
+    {
+        $childrenIds = [];
+
+        foreach ($this->relatedFolders()->withoutGlobalScopes(['checkSharedFolders'])->get() as $child) {
+            $childrenIds[] = $child->id;
+            $childrenIds = array_merge($childrenIds, $child->all_children_ids);
+        }
+
+        return $childrenIds;
+    }
+
     public function getBreadcrumbAttribute()
     {
+        $hlsFolderRepository = config('hls-videos.repositories.hls_folder');
         $breadcrumb = collect([]);
         $folder = $this;
         $visitedIDS = [];
 
-        while ($folder) {
-            if (in_array($folder->id, $visitedIDS)) {
-                break;
-            }
+        if ($hlsFolderRepository::isSharedFolders()) {
+            $allSharedIds = $hlsFolderRepository::allSharedIds();
 
-            $breadcrumb->prepend($folder);
-            $visitedIDS[] = $folder->id;
-            $folder = $folder->parent;
+            while (!is_null($folder)) {
+                if (!in_array($folder->id, $allSharedIds) || in_array($folder->id, $visitedIDS))
+                    break;
+
+                $breadcrumb->prepend($folder);
+                $visitedIDS[] = $folder->id;
+                $folder = $folder->parent;
+            }
+        } else {
+            while (!is_null($folder)) {
+                if (in_array($folder->id, $visitedIDS))
+                    break;
+
+                $breadcrumb->prepend($folder);
+                $visitedIDS[] = $folder->id;
+                $folder = $folder->parent;
+            }
         }
 
         return $breadcrumb;
@@ -102,6 +127,19 @@ class HlsFolder extends Model
         static::deleting(function ($model) {
             $model->videos()->detach();
             $model->relatedFolders()->delete();
+        });
+    }
+
+    protected static function booted()
+    {
+        parent::booted();
+
+        static::addGlobalScope('checkSharedFolders', function ($query) {
+            $repositoryClass = config('hls-videos.repositories.hls_folder');
+
+            if (class_exists($repositoryClass) && method_exists($repositoryClass, 'checkSharedFolders')) {
+                $repositoryClass::checkSharedFolders($query);
+            }
         });
     }
 }
