@@ -101,9 +101,11 @@ class HlsFolder extends Model
         $title = $originalTitle;
         $counter = 1;
 
-        while (self::hasDuplicateTitle($title, $this->parent_id, $this->id)) {
-            $title = "{$originalTitle} ({$counter})";
-            $counter++;
+        if($this->parent_id){
+            while (self::hasDuplicateTitle($title, $this->parent_id, $this->id)) {
+                $title = "{$originalTitle} ({$counter})";
+                $counter++;
+            }
         }
 
         return $title;
