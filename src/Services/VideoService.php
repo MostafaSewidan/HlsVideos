@@ -8,6 +8,7 @@ use HlsVideos\Models\HlsFolder;
 use Pion\Laravel\ChunkUpload\Handler\HandlerFactory;
 use Pion\Laravel\ChunkUpload\Receiver\FileReceiver;
 use Illuminate\Support\Facades\Storage;
+use HlsVideos\Jobs\ConvertQualityJob;
 
 
 class VideoService
@@ -133,6 +134,21 @@ class VideoService
 
         return $video;
     }
+  
+    public function receiveFromServer($request, $videoId)
+    {
+        $video = HlsVideo::findOrFail($videoId);
+        $file = $request->file('file');
+        // Store the uploaded file
+        $extension = $extension ?? $file->getClientOriginalExtension();
+        $fileName = "vd.$extension";
+
+        $disk = Storage::disk(config('hls-videos.temp_disk'));
+        $disk->putFileAs((VideoService::getMediaPath()."$videoId"), $file, $fileName);
+
+        $video->qualities()->delete();
+        (new VideoService())->handleVideoQualities($video);
+    }
 
     private function createUniqueVideoUuid(): string
     {
@@ -178,24 +194,6 @@ class VideoService
 
     public function handleVideoQualities($video)
     {
-        // $videoStream = $this->getVideoInfo($video);
-        // $height = $videoStream['height'];
-        // // logger('config(hls-videos.qualities)',$videoStream);
-
-        // // Match height to quality label
-        // $quality = match (true) {
-        //     $height >= 1080 => '1080',
-        //     $height >= 720  => '720',
-        //     $height >= 480  => '480',
-        //     $height >= 360  => '360',
-        //     $height >= 144  => '144',
-        //     default         => 'original',
-        // };
-
-        // $video->update([
-        //     'original_steam_quality' => $quality,
-        //     'stream_data' => $videoStream,
-        // ]);
         $upcommingQuality = self::getUpcommingQuality($video);
 
         if ($upcommingQuality)
@@ -238,7 +236,7 @@ class VideoService
         ];
     }
 
-    static function getStreamTemporaryLink($videoId, $quality = null, $file = null)
+    static function getStreamTemporaryLink($videoId, $quality = null, $file = null, $domain = null)
     {
         try {
             $path = VideoService::getMediaPath().$videoId;
@@ -251,12 +249,49 @@ class VideoService
             else
                 $path .= "/index.m3u8";
 
-            return Storage::disk(config('hls-videos.stream_disk'))->temporaryUrl(
-                $path,
-                now()->addMinutes(5) // signed URL valid for 15 minutes
-            );
+            $disk = Storage::disk(config('hls-videos.stream_disk'));
+
+            $content = $disk->get($path);
+
+            // Determine content type based on file extension
+            $contentType = 'application/vnd.apple.mpegurl'; // default for .m3u8
+            if ($file) {
+                if (str_ends_with($file, '.ts')) {
+                    $contentType = 'video/mp2t';
+                } elseif (str_ends_with($file, '.m3u8')) {
+                    $contentType = 'application/vnd.apple.mpegurl';
+                }
+            }
+
+            if ($file == 'vd.m3u8') {
+
+                $replacePath = VideoService::getMediaPath().$videoId;
+                $subdomain = VideoService::getSubDomain();
+
+                $oldTsFilesUrl = "https://$subdomain.stepsio.com/api/vd/{$videoId}/stream/{$quality}";
+                $newTsFilesUrl = "https://stepsio-stream.org/$replacePath/{$quality}";
+                $content = str_replace($oldTsFilesUrl, $newTsFilesUrl, $content);
+            }
+
+            return response($content, 200, [
+                'Content-Type' => $contentType,
+                'Cache-Control' => 'no-cache, no-store, must-revalidate',
+                'Pragma' => 'no-cache',
+                'Expires' => '0',
+            ]);
+
         } catch (\Exception $e) {
             abort(404);
         }
+    }
+
+    public static function dispatchConvertQualityJob($videoQuality): void
+    {
+        // Create directories
+        if (! is_dir($videoQuality->process_folder_path)) {
+            mkdir($videoQuality->process_folder_path, 0755, true);
+        }
+
+        ConvertQualityJob::dispatch($videoQuality, app('currentTenant'))->onQueue('default');
     }
 }

@@ -16,6 +16,9 @@ return [
     'repositories' => [
         'hls_folder' => HlsFolderRepository::class
     ],
+    'steps_encoder_token' => env("HLS_VIDEO_STEPS_ENCODER_TOKEN"),
+    'steps_encoder_urls' => [],
+    'tenant_model' => null,
     'storages' => [
         'r2' => [
             'disk_name' => 'r2',

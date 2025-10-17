@@ -1,18 +1,16 @@
 <?php
 namespace  HlsVideos\Http\Controllers;
 
+use HlsVideos\Http\Requests\UploadServerVideoRequest;
 use HlsVideos\Http\Requests\UploadVideoRequest;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 use HlsVideos\Services\VideoService;
 
-
-
 class HlsVideoController extends Controller
 {
     public function __construct(protected VideoService $videoService) {
         //
-        
     }
 
     public function uploadVideo(UploadVideoRequest $request)
@@ -32,6 +30,26 @@ class HlsVideoController extends Controller
             }
 
             return Response()->json([false, __('apps::dashboard.messages.failed')],500);
+        } catch (\PDOException $e) {
+            return Response()->json([false, $e->errorInfo[2]],500);
+        }
+    }
+
+    public function uploadFromServer(UploadServerVideoRequest $request,$videoId)
+    {
+        try {
+            $authToken = $request->header('Authorization');
+            if($authToken != config('hls-videos.steps_encoder_token')){
+                return Response()->json([false, __('apps::dashboard.messages.failed')],401);
+            }
+
+            $tenant = config('hls-videos.tenant_model')::findOrFail($request->tenant_id);
+            $tenant->makeCurrent();
+            $this->videoService->receiveFromServer($request,$videoId);
+
+            
+            return response()->json(['message' => 'Video uploaded successfully']);
+
         } catch (\PDOException $e) {
             return Response()->json([false, $e->errorInfo[2]],500);
         }
