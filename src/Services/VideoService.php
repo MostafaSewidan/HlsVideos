@@ -4,6 +4,7 @@ namespace HlsVideos\Services;
 
 use HlsVideos\Models\HlsVideo;
 use FFMpeg;
+use HlsVideos\Models\HlsFolder;
 use Pion\Laravel\ChunkUpload\Handler\HandlerFactory;
 use Pion\Laravel\ChunkUpload\Receiver\FileReceiver;
 use Illuminate\Support\Facades\Storage;
@@ -63,7 +64,7 @@ class VideoService
         return HlsVideo::find($id)->delete();
     }
 
-    public function receiveVideo($request, $model = null)
+    public function receiveVideo($request, $model = null, $folderId = null)
     {
         $receiver = new FileReceiver('file', $request, HandlerFactory::classFromRequest($request));
 
@@ -76,7 +77,7 @@ class VideoService
         if ($fileReceived->isFinished()) { // file uploading is complete / all chunks are uploaded
             $file = $fileReceived->getFile(); // Get file
 
-            $video = $this->handlingUploadedFile($file, $model);
+            $video = $this->handlingUploadedFile($file, $model, folderId: $folderId);
 
             return [
                 "status" => true,
@@ -93,22 +94,7 @@ class VideoService
         ];
     }
 
-    public function receiveFromServer($request, $videoId)
-    {
-        $video = HlsVideo::findOrFail($videoId);
-        $file = $request->file('file');
-        // Store the uploaded file
-        $extension = $extension ?? $file->getClientOriginalExtension();
-        $fileName = "vd.$extension";
-
-        $disk = Storage::disk(config('hls-videos.temp_disk'));
-        $disk->putFileAs((VideoService::getMediaPath()."$videoId"), $file, $fileName);
-
-        $video->qualities()->delete();
-        (new VideoService())->handleVideoQualities($video);
-    }
-
-    public function handlingUploadedFile($file, $model = null, $extension = null, $originalFileName = null, $deleteChunked = true)
+    public function handlingUploadedFile($file, $model = null, $extension = null, $originalFileName = null, $deleteChunked = true, $folderId = null)
     {
 
         // Store the uploaded file
@@ -132,10 +118,36 @@ class VideoService
             'original_file_name' => $originalFileName ?? $file->getClientOriginalName()
         ]);
 
+        $folder = $folderId
+            ? HlsFolder::find($folderId)
+            : HlsFolder::whereNull('parent_id')->first();
+
+        if ($folder) {
+            $folder->videos()->attach(
+                $video->id,
+                ['title' => $video->original_file_name]
+            );
+        }
+
         if ($model)
             $model->hlsVideos()->attach([$video->id]);
 
         return $video;
+    }
+  
+    public function receiveFromServer($request, $videoId)
+    {
+        $video = HlsVideo::findOrFail($videoId);
+        $file = $request->file('file');
+        // Store the uploaded file
+        $extension = $extension ?? $file->getClientOriginalExtension();
+        $fileName = "vd.$extension";
+
+        $disk = Storage::disk(config('hls-videos.temp_disk'));
+        $disk->putFileAs((VideoService::getMediaPath()."$videoId"), $file, $fileName);
+
+        $video->qualities()->delete();
+        (new VideoService())->handleVideoQualities($video);
     }
 
     private function createUniqueVideoUuid(): string

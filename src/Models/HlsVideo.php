@@ -36,6 +36,18 @@ class HlsVideo extends Model
         });
     }
 
+    public function parentFolders()
+    {
+        return $this->belongsToMany(
+            HlsFolder::class,
+            'hls_folder_video',
+            'hls_video_id',
+            'folder_id'
+        )->using(HlsFolderVideo::class)   //! مهم عشان يعدي علي البوت بتاع موديل HlsFolderVideo 
+            ->withPivot('id', 'title')
+            ->withTimestamps();
+    }
+
     public function qualities(){
         return $this->hasMany(HlsVideoQuality::class,'hls_video_id');
     }

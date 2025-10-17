@@ -4,7 +4,7 @@ namespace  HlsVideos\Http\Requests;
 
 use Illuminate\Foundation\Http\FormRequest;
 
-class UploadVideoRequest extends FormRequest
+class CopyMoveVideoRequest extends FormRequest
 {
     /**
      * Get the validation rules that apply to the request.
@@ -13,12 +13,10 @@ class UploadVideoRequest extends FormRequest
      */
     public function rules()
     {
-
         return [
-            'file' => 'required', // 10MB max per chunk
-            'folder_id' => 'nullable|exists:hls_folders,id',
-            'chunk' => 'nullable|integer',
-            'chunks' => 'nullable|integer',
+            'folder_video_ids' => 'required|array',
+            'folder_video_ids.*' => 'required|exists:hls_folder_video,id',
+            'new_parent_id' => 'required|exists:hls_folders,id'
         ];
     }
 
