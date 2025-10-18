@@ -1223,6 +1223,7 @@
                         'X-CSRF-TOKEN': '{{ csrf_token() }}'
                     },
                     body: JSON.stringify({
+                        _token: "{{ csrf_token() }}",
                         video_id: video.video_id,
                         model_type: modelType,
                         model_id: modelId
