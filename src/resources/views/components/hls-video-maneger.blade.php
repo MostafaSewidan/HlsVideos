@@ -896,14 +896,7 @@
             `;
 
             // Build API endpoint
-            let apiUrl;
-            if (showAllFolders) {
-                // Use search API to get all videos
-                apiUrl = '/hls/folders/search?search=';
-            } else {
-                // Get videos and folders from current folder
-                apiUrl = targetFolderId ? `/hls/folders/list?id=${targetFolderId}` : '/hls/folders/list';
-            }
+            let apiUrl = targetFolderId ? `/hls/folders/list?id=${targetFolderId}` : '/hls/folders/list';
 
             fetch(apiUrl, {
                     headers: {
