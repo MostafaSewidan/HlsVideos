@@ -7,9 +7,9 @@ class VideoManeger extends Component
 {
     public $video;
 
-    public function __construct(public $model)
+    public function __construct(public $model = null)
     {
-        $this->video = $model->getHlsVideo();
+        $this->video = $model?->getHlsVideo();
     }
 
     public function render()
