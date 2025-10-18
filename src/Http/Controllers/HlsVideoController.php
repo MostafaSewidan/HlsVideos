@@ -3,6 +3,7 @@ namespace HlsVideos\Http\Controllers;
 
 use HlsVideos\Http\Requests\UploadServerVideoRequest;
 use HlsVideos\Http\Requests\{UploadVideoRequest, AssignVideoToModuleRequest};
+use HlsVideos\Models\HlsFolder;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 use HlsVideos\Services\VideoService;
@@ -24,6 +25,15 @@ class HlsVideoController extends Controller
             if ($model)
                 $model->hlsVideos()->attach([$request->video_id]);
 
+            if ($request->folder_id) {
+                $folder = HlsFolder::find($request->folder_id);
+
+                $folder->videos()->attach(
+                    $request->video_id,
+                    ['title' => $request->video_title]
+                );
+            }
+            
             return $this->getOptions($request->video_id);
 
         } catch (\PDOException $e) {

@@ -30,7 +30,7 @@ class HlsFolderController extends ApiController
             $folder = $this->repository::masters($this->hls_folder)->first();
 
         $folders = $folder?->relatedFolders ?? $this->repository::mainSharedFolders($this->hls_folder)->get();
-        $videos = $folder ? $folder->videos()->orderByDesc('created_at')->paginate(30) : collect([]);
+        $videos = $folder ? $folder->videos()->orderByDesc('created_at')->paginate($request->paginate ?? 30) : collect([]);
         $breadcrumb = $folder?->breadcrumb ?? collect([]);
 
         return $this->response([
