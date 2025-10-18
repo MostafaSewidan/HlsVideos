@@ -367,9 +367,11 @@
         }
 
         .existing-videos-content {
+            position: relative;
             flex: 1;
             overflow-y: auto;
             padding: 16px 20px;
+            max-height: 400px; 
         }
 
         .existing-video-item {
@@ -574,6 +576,177 @@
                 margin: 0 8px;
             }
         }
+        
+        /* زر عرض المزيد */
+        .hls-load-more-btn {
+            position: relative;
+            left: 50%;
+            transform: translateX(-50%);
+            background: #007bff;
+            color: white;
+            border: none;
+            border-radius: 25px;
+            padding: 12px 24px;
+            font-size: 14px;
+            font-weight: 500;
+            box-shadow: 0 4px 12px rgba(0, 123, 255, 0.3);
+            cursor: pointer;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 8px;
+            z-index: 1000;
+            transition: all 0.3s ease;
+        }
+
+        .hls-load-more-btn:hover {
+            background: #0056b3;
+            transform: translateX(-50%) translateY(-2px);
+            box-shadow: 0 6px 16px rgba(0, 123, 255, 0.4);
+        }
+
+        .hls-load-more-btn:active {
+            transform: translateX(-50%) translateY(0);
+        }
+
+        .hls-load-more-btn.loading {
+            background: #6c757d;
+            cursor: not-allowed;
+        }
+
+        .hls-load-more-btn.loading i {
+            animation: spin 1s linear infinite;
+        }
+
+        .hls-load-more-btn.hidden {
+            opacity: 0;
+            visibility: hidden;
+            transform: translateX(-50%) translateY(20px);
+        }
+
+        /* مؤشر التحميل */
+        .loading-indicator {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+            color: #6c757d;
+        }
+
+        .loading-indicator .spinner {
+            width: 20px;
+            height: 20px;
+            border: 2px solid #f3f3f3;
+            border-top: 2px solid #007bff;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-right: 10px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        /* تحسينات للهواتف المحمولة */
+        @media (max-width: 768px) {
+            .hls-load-more-btn {
+                bottom: 80px; /* أعلى قليلاً لتجنب التداخل مع التذييل */
+                padding: 14px 28px;
+                font-size: 16px;
+            }
+            
+            .file-manager-content {
+                padding-bottom: 100px; /* مساحة إضافية للزر */
+            }
+        }
+
+        .hls-loading-more,
+        .hls-no-more-items {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+            grid-column: 1 / -1;
+            color: #6c757d;
+            font-size: 14px;
+        }
+
+        .hls-no-more-items i {
+            margin-right: 8px;
+            color: #4cc9f0;
+        }
+        /* Fixed scroll container */
+        .existing-videos-scroll-container {
+            position: relative;
+            flex: 1;
+            overflow: hidden; /* Hide outer scroll */
+            display: flex;
+            flex-direction: column;
+        }
+
+        .existing-videos-content {
+            flex: 1;
+            overflow-y: auto; /* Enable scrolling */
+            max-height: 400px; /* Fixed height for scrolling */
+            padding: 16px 20px;
+        }
+
+        /* Ensure content is scrollable */
+        .existing-videos-panel {
+            display: none;
+            flex-direction: column;
+            height: 600px; /* Fixed panel height */
+            max-height: 80vh;
+        }
+
+        .existing-videos-panel.active {
+            display: flex;
+        }
+
+        /* Load more button positioning */
+        .hls-load-more-btn {
+            margin: 16px auto;
+            display: none;
+        }
+
+        .hls-load-more-btn:not(.hidden) {
+            display: flex;
+        }
+
+        /* Footer layout */
+        .existing-videos-footer {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            padding: 16px 20px;
+            border-top: 2px solid #e9ecef;
+        }
+
+        .footer-buttons {
+            display: flex;
+            justify-content: flex-end;
+            gap: 12px;
+        }
+
+        /* Responsive fixes */
+        @media (max-width: 768px) {
+            .existing-videos-panel {
+                height: 70vh;
+            }
+            
+            .existing-videos-content {
+                max-height: 300px;
+            }
+            
+            .footer-buttons {
+                flex-direction: column;
+            }
+            
+            .footer-buttons button {
+                width: 100%;
+            }
+        }
     </style>
     @include('hls-videos::components._cssvideo')
 @endpush
@@ -771,8 +944,193 @@
             filteredVideos: [],
             filteredFolders: [],
             selectedVideo: null,
-            breadcrumb: []
+            isLoading: false,
+            breadcrumb: [],
+            pagination: {
+                currentPage: 1,
+                lastPage: 1,
+                perPage: 20,
+                total: 0,
+                hasMore: false,
+                isLoading: false,
+            }
         };
+
+        // ========== دوال معالجة Pagination والتمرير اللانهائي ==========
+
+        function setupInfiniteScrollHls() {
+            const scrollContainer = document.querySelector(".existing-videos-content");
+            const loadMoreBtn = document.getElementById("hls-load-more-button");
+
+            if (scrollContainer) {
+                scrollContainer.removeEventListener("scroll", handleScrollHls);
+                scrollContainer.addEventListener("scroll", handleScrollHls);
+            }
+
+            if (loadMoreBtn) {
+                loadMoreBtn.removeEventListener("click", handleLoadMoreBtnHls);
+                loadMoreBtn.addEventListener("click", handleLoadMoreBtnHls);
+                updateLoadMoreButton();
+            }
+        }
+
+        function handleScrollHls() {
+            if (existingVideosState.pagination.isLoading) return;
+            const scrollContainer = document.querySelector(".existing-videos-content");
+            if (!scrollContainer) return;
+
+            const scrollTop = scrollContainer.scrollTop || document.documentElement.scrollTop;
+            const scrollHeight =
+                scrollContainer.scrollHeight || document.documentElement.scrollHeight;
+            const clientHeight =
+                scrollContainer.clientHeight || document.documentElement.clientHeight;
+            const nearBottom = scrollTop + clientHeight >= scrollHeight - 200;
+
+            if (nearBottom && existingVideosState.pagination.hasMore) {
+                loadNextPageHls();
+            }
+        }
+
+        function handleLoadMoreBtnHls(event) {
+            event.preventDefault();
+            event.stopPropagation();
+            if (existingVideosState.pagination.isLoading) return;
+            if (existingVideosState.pagination.hasMore) {
+                loadNextPageHls();
+            }
+        }
+
+        function updateLoadMoreButton() {
+            const loadMoreBtn = document.getElementById("hls-load-more-button");
+            if (!loadMoreBtn) return;
+
+            if (existingVideosState.pagination.hasMore && !existingVideosState.pagination.isLoading) {
+                loadMoreBtn.style.display = 'flex';
+                loadMoreBtn.disabled = false;
+                loadMoreBtn.innerHTML = '<i class="fas fa-arrow-down"></i> تحميل المزيد';
+            } else if (existingVideosState.pagination.isLoading) {
+                loadMoreBtn.style.display = 'none';
+                loadMoreBtn.disabled = true;
+            } else {
+                loadMoreBtn.style.display = 'none';
+            }
+        }
+
+        function loadNextPageHls() {
+            if (existingVideosState.pagination.isLoading || !existingVideosState.pagination.hasMore) return;
+            
+            existingVideosState.pagination.isLoading = true;
+            existingVideosState.pagination.currentPage++;
+
+            // Update UI
+            updateLoadMoreButton();
+            showLoadingMoreHls();
+
+            // Build API URL
+            console.log(existingVideosState.currentFolderId);
+            
+            const baseUrl = `/hls/folders/list?id=${existingVideosState.currentFolderId}`;
+            
+            const apiUrl = `${baseUrl}&page=${existingVideosState.pagination.currentPage}`;
+            
+            fetch(apiUrl, {
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                    'X-CSRF-TOKEN': '{{ csrf_token() }}'
+                }
+            })
+            .then((response) => {
+                return response.json();
+            })
+            .then((data) => {
+                if (data.success) {
+                    handleNextPageDataHls(data.data || data);
+                } else {
+                    throw new Error(data.message || "Failed to load next page");
+                }
+            })
+            .catch((error) => {
+                console.error('❌ API error:', error);
+                toastr.error("فشل تحميل المزيد من العناصر");
+                // Rollback page number on error
+                existingVideosState.pagination.currentPage--;
+            })
+            .finally(() => {
+                existingVideosState.pagination.isLoading = false;
+                hideLoadingMoreHls();
+                updateLoadMoreButton();
+            });
+        }
+
+        function handleNextPageDataHls(responseData) {
+            if (!responseData) return;
+
+            // Extract new data
+            const newVideos = responseData.videos?.data || responseData.videos || [];
+            const newFolders = responseData.folders || [];
+
+            // Merge new data with existing data
+            existingVideosState.allVideos = [
+                ...existingVideosState.allVideos, 
+                ...newVideos.filter(v => v.status === 'ready')
+            ];
+            existingVideosState.filteredVideos = existingVideosState.allVideos;
+
+            // Update pagination info
+            const paginationInfo = responseData.videos?.pagination || responseData.videos?.meta || responseData.pagination || {};
+            existingVideosState.pagination.currentPage = paginationInfo.current_page || existingVideosState.pagination.currentPage;
+            existingVideosState.pagination.lastPage = paginationInfo.last_page || existingVideosState.pagination.lastPage;
+            existingVideosState.pagination.perPage = paginationInfo.per_page || existingVideosState.pagination.perPage;
+            existingVideosState.pagination.total = paginationInfo.total || existingVideosState.pagination.total;
+            existingVideosState.pagination.hasMore = existingVideosState.pagination.currentPage < existingVideosState.pagination.lastPage;
+
+            // Update UI
+            displayExistingVideos();
+            updateVideosCount();
+
+            if (!existingVideosState.pagination.hasMore) {
+                showNoMoreItemsHls();
+            }
+        }
+
+        function showLoadingMoreHls() {
+            hideLoadingMoreHls();
+            const content = document.getElementById('existing-videos-content');
+            if (!content) return;
+
+            const loadingHTML = `
+                <div class="hls-loading-more" id="hls-loading-more">
+                    <div class="spinner" style="width: 20px; height: 20px; border: 2px solid #f3f3f3; border-top: 2px solid #007bff; border-radius: 50%; animation: spin 1s linear infinite; margin-right: 10px;"></div>
+                    <span>جاري تحميل المزيد...</span>
+                </div>
+            `;
+            content.insertAdjacentHTML('beforeend', loadingHTML);
+        }
+
+        function hideLoadingMoreHls() {
+            const loadingElement = document.getElementById('hls-loading-more');
+            if (loadingElement) {
+                loadingElement.remove();
+            }
+        }
+
+        function showNoMoreItemsHls() {
+            const content = document.getElementById('existing-videos-content');
+            if (!content) return;
+
+            // Remove previous no more items message
+            const prevNoMore = document.getElementById('hls-no-more-items');
+            if (prevNoMore) prevNoMore.remove();
+
+            const noMoreHTML = `
+                <div class="hls-no-more-items" id="hls-no-more-items">
+                    <i class="fas fa-check-circle mx-2" style="color: #28a745; margin-right: 8px;"></i>
+                    <span>لا توجد المزيد من العناصر للتحميل</span>
+                </div>
+            `;
+            content.insertAdjacentHTML('beforeend', noMoreHTML);
+        }
 
         function setupExistingVideosPanel() {
             const closeBtn = document.getElementById('close-existing-panel');
@@ -801,14 +1159,17 @@
                 showAllCheckbox.addEventListener('change', function() {
                     // Reset to initial folder when toggling
                     const folderIdInput = document.getElementById('current_folder_id');
-                    existingVideosState.currentFolderId = this.checked ? null : (folderIdInput ? folderIdInput
-                        .value : null);
+                    existingVideosState.currentFolderId = this.checked ? null : (folderIdInput ? folderIdInput.value : null);
                     existingVideosState.selectedVideo = null;
 
                     const confirmBtn = document.getElementById('confirm-select-video');
                     if (confirmBtn) {
                         confirmBtn.disabled = true;
                     }
+
+                    // Reset pagination when switching modes
+                    existingVideosState.pagination.currentPage = 1;
+                    existingVideosState.pagination.hasMore = false;
 
                     loadExistingVideos();
                 });
@@ -824,7 +1185,16 @@
                 const folderIdInput = document.getElementById('current_folder_id');
                 existingVideosState.currentFolderId = folderIdInput ? folderIdInput.value : null;
 
+                // Reset pagination state
+                existingVideosState.pagination.currentPage = 1;
+                existingVideosState.pagination.hasMore = false;
+
                 loadExistingVideos();
+
+                // Initialize infinite scroll when panel is shown
+                setTimeout(() => {
+                    setupInfiniteScrollHls();
+                }, 100);
 
                 // Add keyboard event listener
                 document.addEventListener('keydown', handleExistingPanelKeyboard);
@@ -856,6 +1226,8 @@
                 existingVideosState.selectedVideo = null;
                 existingVideosState.currentFolderId = null;
                 existingVideosState.breadcrumb = [];
+                existingVideosState.pagination.currentPage = 1;
+                existingVideosState.pagination.hasMore = false;
 
                 // Reset form elements
                 const searchInput = document.getElementById('existing-videos-search');
@@ -895,15 +1267,11 @@
                 </div>
             `;
 
+            // Hide load more button during initial load
+            updateLoadMoreButton();
+
             // Build API endpoint
-            let apiUrl;
-            if (showAllFolders) {
-                // Use search API to get all videos
-                apiUrl = '/hls/folders/search?search=';
-            } else {
-                // Get videos and folders from current folder
-                apiUrl = targetFolderId ? `/hls/folders/list?id=${targetFolderId}` : '/hls/folders/list';
-            }
+            let apiUrl = targetFolderId ? `/hls/folders/list?id=${targetFolderId}` : '/hls/folders/list';
 
             fetch(apiUrl, {
                     headers: {
@@ -917,26 +1285,37 @@
                     if (data.success) {
                         let videos = [];
                         let folders = [];
+                        const responseData = data.data || data;
 
                         if (showAllFolders) {
                             // For search results, extract videos from the data structure
-                            const searchData = data.data || data;
-                            const videoResults = searchData.videos?.data || searchData.videos || [];
+                            const videoResults = responseData.videos?.data || responseData.videos || [];
                             videos = videoResults.map(item => item.video || item);
                             folders = []; // Don't show folders when searching all
                         } else {
                             // For folder list, extract both folders and videos
-                            const responseData = data.data;
                             videos = responseData.videos?.data || responseData.videos || [];
                             folders = responseData.folders || [];
                             existingVideosState.breadcrumb = responseData.breadcrumb || [];
                             existingVideosState.currentFolderId = targetFolderId;
                         }
 
+                        if(!existingVideosState.currentFolderId) {
+                            existingVideosState.currentFolderId = data.data.folder.id;
+                        }
+
                         existingVideosState.allVideos = videos.filter(v => v.status === 'ready');
                         existingVideosState.allFolders = folders;
                         existingVideosState.filteredVideos = existingVideosState.allVideos;
                         existingVideosState.filteredFolders = existingVideosState.allFolders;
+
+                        // Update pagination info from initial load
+                        const paginationInfo = responseData.videos?.pagination || responseData.videos?.meta || responseData.pagination || {};
+                        existingVideosState.pagination.currentPage = paginationInfo.current_page || 1;
+                        existingVideosState.pagination.lastPage = paginationInfo.last_page || 1;
+                        existingVideosState.pagination.perPage = paginationInfo.per_page || 20;
+                        existingVideosState.pagination.total = paginationInfo.total || 0;
+                        existingVideosState.pagination.hasMore = existingVideosState.pagination.currentPage < existingVideosState.pagination.lastPage;
 
                         displayExistingVideos();
                         updateExistingBreadcrumb();
@@ -1127,29 +1506,13 @@
             });
 
             content.innerHTML = html;
+            
+            // Update load more button after rendering
+            updateLoadMoreButton();
         }
 
         function openExistingFolder(folderId) {
             navigateToExistingFolder(folderId);
-        }
-
-        function updateVideosCount() {
-            const countElement = document.getElementById('videos-count');
-            if (countElement) {
-                const folderCount = existingVideosState.filteredFolders.length;
-                const videoCount = existingVideosState.filteredVideos.length;
-                const totalItems = folderCount + videoCount;
-
-                if (folderCount > 0 && videoCount > 0) {
-                    countElement.textContent = `${folderCount} @lang('folder(s)'), ${videoCount} @lang('video(s)')`;
-                } else if (folderCount > 0) {
-                    countElement.textContent = `${folderCount} @lang('folder(s)')`;
-                } else if (videoCount > 0) {
-                    countElement.textContent = `${videoCount} @lang('video(s)')`;
-                } else {
-                    countElement.textContent = '@lang('No items')';
-                }
-            }
         }
 
         function selectExistingVideo(videoId) {
@@ -1177,7 +1540,7 @@
         }
 
         function filterExistingVideos() {
-
+        
             const searchTerm = document.getElementById('existing-videos-search').value.toLowerCase();
 
             if (searchTerm) {
@@ -1225,6 +1588,8 @@
                     body: JSON.stringify({
                         _token: "{{ csrf_token() }}",
                         video_id: video.video_id,
+                        video_title: video.title,
+                        folder_id: existingVideosState.currentFolderId,
                         model_type: modelType,
                         model_id: modelId
                     })
@@ -1234,9 +1599,6 @@
                 })
                 .catch(error => {
                     console.log(error);
-                    // console.error('Error confirming video selection:', error.response.data);
-                    // toastr.error(error.response.data.message || 'فشل اختيار الفيديو');
-
                     // Re-enable button
                     confirmBtn.disabled = false;
                     confirmBtn.innerHTML = originalBtnText;
