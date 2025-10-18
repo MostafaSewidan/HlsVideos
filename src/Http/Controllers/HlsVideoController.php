@@ -34,8 +34,7 @@ class HlsVideoController extends Controller
                 );
             }
             
-            $this->getOptions($request->video_id);
-            return response()->json(['message' => 'Video uploaded successfully']);
+            return $this->getOptions($request->video_id);
 
         } catch (\PDOException $e) {
             return $this->error($e->getMessage(), [], 500);
