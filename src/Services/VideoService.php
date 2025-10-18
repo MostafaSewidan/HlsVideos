@@ -59,9 +59,19 @@ class VideoService
         return HlsVideo::find($id);
     }
 
-    static function deleteVideo($id)
+    static function deleteVideo($request, $id)
     {
-        return HlsVideo::find($id)->delete();
+        $video = HlsVideo::find($id);
+        $model = $request->modelType ? $request->modelType::find($request->modelId) : null;
+
+        if ($model) {
+            $model->hlsVideos()->detach($id);
+        }
+
+        if (! $video->HlsVideoables()->count() && ! $video->parentFolders()->count()) {
+
+            return HlsVideo::find($id)->delete();
+        }
     }
 
     public function receiveVideo($request, $model = null, $folderId = null)
@@ -118,7 +128,7 @@ class VideoService
             'original_file_name' => $originalFileName ?? $file->getClientOriginalName()
         ]);
 
-        $folder = $folderId
+        $folder = $folderId && $folderId != 'null'
             ? HlsFolder::find($folderId)
             : HlsFolder::whereNull('parent_id')->first();
 
@@ -134,7 +144,7 @@ class VideoService
 
         return $video;
     }
-  
+
     public function receiveFromServer($request, $videoId)
     {
         $video = HlsVideo::findOrFail($videoId);

@@ -36,7 +36,34 @@
         @break
 
         @default
-            <div id="drag-drop-area"></div>
+            <div id="drag-drop-area">
+                <!-- Existing Videos Panel -->
+                <div id="existing-videos-panel" class="existing-videos-panel">
+                    <div id="existing-breadcrumb" style="padding: 12px 20px; border-bottom: 1px solid #e9ecef; display: none;">
+                        <!-- Breadcrumb will be inserted here -->
+                    </div>
+
+                    <div class="existing-videos-search">
+                        <input type="text" id="existing-videos-search" placeholder="بحث في الفيديوهات...">
+                    </div>
+
+                    <div class="existing-videos-content" id="existing-videos-content">
+                        <div class="existing-videos-loading">
+                            <div class="spinner"></div>
+                        </div>
+                    </div>
+
+                    <div class="existing-videos-footer">
+                        <button class="btn btn-secondary" id="cancel-select-video">
+                            إلغاء
+                        </button>
+                        <button class="btn-select-video" id="confirm-select-video" disabled>
+                            <i class="fas fa-check mx-2"></i>
+                            استخدم هذا الفيديو
+                        </button>
+                    </div>
+                </div>
+            </div>
         @break
 
     @endswitch

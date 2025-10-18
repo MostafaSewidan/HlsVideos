@@ -4,7 +4,7 @@ namespace HlsVideos\Http\Requests;
 
 use Illuminate\Foundation\Http\FormRequest;
 
-class UploadVideoRequest extends FormRequest
+class AssignVideoToModuleRequest extends FormRequest
 {
     /**
      * Get the validation rules that apply to the request.
@@ -15,9 +15,9 @@ class UploadVideoRequest extends FormRequest
     {
 
         return [
-            'file' => 'required', // 10MB max per chunk
-            'chunk' => 'nullable|integer',
-            'chunks' => 'nullable|integer',
+            'video_id' => 'required|exists:hls_videos,id',
+            'model_type' => 'required|string',
+            'model_id' => 'required',
         ];
     }
 
