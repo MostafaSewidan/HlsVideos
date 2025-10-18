@@ -691,7 +691,7 @@
                                 color: #FF3D00;
                             "></i>
                         </div>
-                        <div class="uppy-DashboardTab-name">الفيديوهات السابقة</div>
+                        <div class="uppy-DashboardTab-name">مكتبة الفيديوهات </div>
                         </button>
                     </div>
                     `;
