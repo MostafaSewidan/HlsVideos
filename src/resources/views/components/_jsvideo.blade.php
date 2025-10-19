@@ -68,33 +68,39 @@
             loop: "تشغيل متكرر",
         };
 
+        const controls = isIos ? [
+            "play-large",
+            "rewind",
+            "play",
+            "fast-forward",
+            "progress",
+            "current-time",
+            "duration",
+            "mute",
+            "volume",
+            "settings"
+
+        ] : [
+            "play-large",
+            "rewind",
+            "play",
+            "fast-forward",
+            "progress",
+            "current-time",
+            "duration",
+            "mute",
+            "volume",
+            "settings"
+        ];
+
+        @if (isset($fullScreenStatus) && !$fullScreenStatus)
+        @else
+            controls.push("fullscreen");
+        @endif
+
         const player = new Plyr(video, {
             i18n: "{{ app()->getLocale() }}" === "ar" ? i18n_ar : {},
-            controls: isIos ? [
-                "play-large",
-                "rewind",
-                "play",
-                "fast-forward",
-                "progress",
-                "current-time",
-                "duration",
-                "mute",
-                "volume",
-                "settings"
-
-            ] : [
-                "play-large",
-                "rewind",
-                "play",
-                "fast-forward",
-                "progress",
-                "current-time",
-                "duration",
-                "mute",
-                "volume",
-                "settings",
-                "fullscreen"
-            ],
+            controls: controls,
             settings: ["quality", "speed", "captions"],
             tooltips: {
                 controls: true,

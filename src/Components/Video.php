@@ -6,7 +6,7 @@ use Illuminate\View\Component;
 class Video extends Component
 {
 
-    public function __construct(public $video)
+    public function __construct(public $video, public $fullScreenStatus = true)
     {
 
     }
