@@ -134,5 +134,29 @@
 
     document.addEventListener("DOMContentLoaded", function() {
         videoPlayerIoRun();
+
+        @if (isset($fullScreenStatus) && $fullScreenStatus)
+            document.addEventListener('dblclick', function(event) {
+                player.fullscreen.exit();
+            });
+            player.on('enterfullscreen', () => {
+                if (player.fullscreen.active) {
+                    player.fullscreen.exit();
+                }
+            });
+            player.on('play', function() {
+                PlayerState.postMessage('Playing');
+            });
+
+            player.on('pause', function() {
+                PlayerState.postMessage('Paused');
+            });
+            player.on('controlsshown', (event) => {
+                Controls.postMessage('controlsshown');
+            });
+            player.on('controlshidden', (event) => {
+                Controls.postMessage('controlshidden');
+            });
+        @endif
     });
 </script>
