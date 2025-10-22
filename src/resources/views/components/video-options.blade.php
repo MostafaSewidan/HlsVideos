@@ -47,9 +47,15 @@
                         <input type="text" id="existing-videos-search" placeholder="بحث في الفيديوهات...">
                     </div>
 
-                    <div class="existing-videos-content" id="existing-videos-content">
-                        <div class="existing-videos-loading">
-                            <div class="spinner"></div>
+                    <div class="existing-videos-content">
+                        <div id="existing-videos-content">
+                            <div class="existing-videos-loading">
+                                <i class="fas fa-spinner fa-spin"></i>
+                            </div>
+                        </div>
+                        <div class="hls-load-more-btn" id="hls-load-more-button">
+                            <i class="fas fa-arrow-down"></i>
+                            تحميل المزيد
                         </div>
                     </div>
 
