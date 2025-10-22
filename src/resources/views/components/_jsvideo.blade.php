@@ -93,7 +93,7 @@
             "settings"
         ];
 
-        @if ($fullScreenStatus == 'on')
+        @if ((isset($fullScreenStatus) && $fullScreenStatus == 'on') || !isset($fullScreenStatus))
             controls.push("fullscreen");
         @endif
 
@@ -131,7 +131,7 @@
         });
 
 
-        @if ($fullScreenStatus == 'off')
+        @if (isset($fullScreenStatus) && $fullScreenStatus == 'off')
             document.querySelector('.plyr').style.height = "95%";
             document.addEventListener('dblclick', function(event) {
                 player.fullscreen.exit();
