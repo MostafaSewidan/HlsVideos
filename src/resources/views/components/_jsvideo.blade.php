@@ -130,12 +130,10 @@
         }, {
             once: true
         });
-    }
 
-    document.addEventListener("DOMContentLoaded", function() {
-        videoPlayerIoRun();
+        @if ((isset($fullScreenStatus) && $fullScreenStatus))
 
-        @if (isset($fullScreenStatus) && $fullScreenStatus)
+            document.querySelector('.plyr').style.height = "95%";
             document.addEventListener('dblclick', function(event) {
                 player.fullscreen.exit();
             });
@@ -158,5 +156,9 @@
                 Controls.postMessage('controlshidden');
             });
         @endif
+    }
+
+    document.addEventListener("DOMContentLoaded", function() {
+        videoPlayerIoRun();
     });
 </script>
