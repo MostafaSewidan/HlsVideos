@@ -29,10 +29,7 @@ class HlsFolderRepository
 
     public static function masters($query)
     {
-        if (self::isSharedFolders() && $mainSharedIds = self::mainSharedIds()) {
-            return $query->whereIn('id', $mainSharedIds);
-        }
-        return $query->withoutGlobalScope('checkSharedFolders')->whereNull('parent_id');
+        return $query->whereNull('parent_id');
     }
 
     public static function isSharedFolders(): bool

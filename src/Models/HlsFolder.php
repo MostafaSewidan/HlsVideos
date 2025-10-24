@@ -77,11 +77,6 @@ class HlsFolder extends Model
         return $this->hasMany(HlsFolder::class, 'parent_id');
     }
 
-    public function scopeMasters($query)
-    {
-        return $query->whereNull('parent_id');
-    }
-
     public function scopeWithRelations($query)
     {
         return $query->with(['relatedFolders', 'videos']);

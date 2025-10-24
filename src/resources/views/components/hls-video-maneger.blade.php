@@ -946,6 +946,7 @@
             selectedVideo: null,
             isLoading: false,
             breadcrumb: [],
+            isSharedMode: false,
             pagination: {
                 currentPage: 1,
                 lastPage: 1,
@@ -1257,8 +1258,11 @@
             const showAllFolders = showAllCheckbox ? showAllCheckbox.checked : false;
 
             // Use provided folder ID or current state folder ID
-            const targetFolderId = folderId !== null ? folderId : existingVideosState.currentFolderId;
+            var targetFolderId = folderId ?? existingVideosState.currentFolderId;
 
+            if(!folderId && existingVideosState.isSharedMode) {
+                targetFolderId = null;
+            }
             // Show loading state
             content.innerHTML = `
                 <div class="existing-videos-loading">
@@ -1272,7 +1276,7 @@
 
             // Build API endpoint
             let apiUrl = targetFolderId ? `/hls/folders/list?id=${targetFolderId}` : '/hls/folders/list';
-
+            
             fetch(apiUrl, {
                     headers: {
                         'Content-Type': 'application/json',
@@ -1286,6 +1290,7 @@
                         let videos = [];
                         let folders = [];
                         const responseData = data.data || data;
+                        existingVideosState.isSharedMode = responseData.is_shared_mode;
 
                         if (showAllFolders) {
                             // For search results, extract videos from the data structure
@@ -1296,12 +1301,19 @@
                             // For folder list, extract both folders and videos
                             videos = responseData.videos?.data || responseData.videos || [];
                             folders = responseData.folders || [];
-                            existingVideosState.breadcrumb = responseData.breadcrumb || [];
+                            if (existingVideosState.isSharedMode) {
+                                existingVideosState.breadcrumb = [
+                                    { id: null, title: 'الرئيسية' },
+                                    ...responseData.breadcrumb,
+                                ];
+                            } else {
+                                existingVideosState.breadcrumb = responseData.breadcrumb || [];
+                            }
                             existingVideosState.currentFolderId = targetFolderId;
                         }
 
                         if(!existingVideosState.currentFolderId) {
-                            existingVideosState.currentFolderId = data.data.folder.id;
+                            existingVideosState.currentFolderId = data.data.folder?.id;
                         }
 
                         existingVideosState.allVideos = videos.filter(v => v.status === 'ready');
