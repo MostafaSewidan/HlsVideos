@@ -68,33 +68,38 @@
             loop: "تشغيل متكرر",
         };
 
+        const controls = isIos ? [
+            "play-large",
+            "rewind",
+            "play",
+            "fast-forward",
+            "progress",
+            "current-time",
+            "duration",
+            "mute",
+            "volume",
+            "settings"
+
+        ] : [
+            "play-large",
+            "rewind",
+            "play",
+            "fast-forward",
+            "progress",
+            "current-time",
+            "duration",
+            "mute",
+            "volume",
+            "settings"
+        ];
+
+        @if ((isset($fullScreenStatus) && $fullScreenStatus == 'on') || !isset($fullScreenStatus))
+            controls.push("fullscreen");
+        @endif
+
         const player = new Plyr(video, {
             i18n: "{{ app()->getLocale() }}" === "ar" ? i18n_ar : {},
-            controls: isIos ? [
-                "play-large",
-                "rewind",
-                "play",
-                "fast-forward",
-                "progress",
-                "current-time",
-                "duration",
-                "mute",
-                "volume",
-                "settings"
-
-            ] : [
-                "play-large",
-                "rewind",
-                "play",
-                "fast-forward",
-                "progress",
-                "current-time",
-                "duration",
-                "mute",
-                "volume",
-                "settings",
-                "fullscreen"
-            ],
+            controls: controls,
             settings: ["quality", "speed", "captions"],
             tooltips: {
                 controls: true,
@@ -124,6 +129,32 @@
         }, {
             once: true
         });
+
+
+        @if (isset($fullScreenStatus) && $fullScreenStatus == 'off')
+            document.querySelector('.plyr').style.height = "95%";
+            document.addEventListener('dblclick', function(event) {
+                player.fullscreen.exit();
+            });
+            player.on('enterfullscreen', () => {
+                if (player.fullscreen.active) {
+                    player.fullscreen.exit();
+                }
+            });
+            player.on('play', function() {
+                PlayerState.postMessage('Playing');
+            });
+
+            player.on('pause', function() {
+                PlayerState.postMessage('Paused');
+            });
+            player.on('controlsshown', (event) => {
+                Controls.postMessage('controlsshown');
+            });
+            player.on('controlshidden', (event) => {
+                Controls.postMessage('controlshidden');
+            });
+        @endif
     }
 
     document.addEventListener("DOMContentLoaded", function() {

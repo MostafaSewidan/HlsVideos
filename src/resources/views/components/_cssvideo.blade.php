@@ -1,14 +1,15 @@
 <link rel="stylesheet" href="https://cdn.plyr.io/3.7.8/plyr.css" />
+
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 <style>
     :root {
-        --color-primary: #1f4f9a;
-        --color-secondary: #23509f;
-        --color-secondery: #23509f;
+        --color-primary: #032336bd;
+        --color-secondary: #ffc629;
         --color-accent: #3bc9db;
         --color-dark-blue: #29425f;
 
         --video-bg: #000;
-        --video-player-main: var(--color-primary);
+        --video-player-main: var(--color-secondary);
         --video-overlay-bg: rgba(0, 0, 0, 0.6);
         --video-shadow-medium: rgba(0, 0, 0, 0.4);
         --video-shadow-strong: rgba(0, 0, 0, 0.6);
@@ -28,6 +29,26 @@
 
         --plyr-color-main: var(--video-player-main);
         --plyr-video-background: var(--video-bg);
+    }
+
+    .video-overlay-left {
+        background: red;
+        width: 43%;
+        height: 80%;
+        position: absolute;
+        z-index: 10;
+        top: 2%;
+        left: 2%;
+    }
+
+    .video-overlay-right {
+        background: red;
+        width: 43%;
+        height: 80%;
+        position: absolute;
+        z-index: 10;
+        top: 2%;
+        right: 2%;
     }
 
     @media (max-width: 991px) {
