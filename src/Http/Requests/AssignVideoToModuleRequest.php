@@ -18,6 +18,8 @@ class AssignVideoToModuleRequest extends FormRequest
             'video_id' => 'required|exists:hls_videos,id',
             'model_type' => 'required|string',
             'model_id' => 'required',
+            'folder_id' => 'required',
+            'video_title' => 'required',
         ];
     }
 

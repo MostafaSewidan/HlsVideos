@@ -128,19 +128,17 @@ class VideoService
             'original_file_name' => $originalFileName ?? $file->getClientOriginalName()
         ]);
 
-        $folder = $folderId && $folderId != 'null'
-            ? HlsFolder::find($folderId)
-            : HlsFolder::whereNull('parent_id')->first();
+        if ($model)
+            $model->hlsVideos()->attach([$video->id]);
 
+        $folder = HlsFolder::find($folderId) 
+            ?? config('hls-videos.repositories.hls_folder')::mainSharedFolders(HlsFolder::query())->first();
         if ($folder) {
             $folder->videos()->attach(
                 $video->id,
                 ['title' => $video->original_file_name]
             );
         }
-
-        if ($model)
-            $model->hlsVideos()->attach([$video->id]);
 
         return $video;
     }

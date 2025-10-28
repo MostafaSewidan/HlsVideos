@@ -31,7 +31,7 @@ class HlsFolderRepository
     {
         return $query->whereNull('parent_id');
     }
-    
+
     public static function isSharedFolders(): bool
     {
         return false;
