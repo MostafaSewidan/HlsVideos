@@ -1,6 +1,7 @@
 <link rel="stylesheet" href="https://cdn.plyr.io/3.7.8/plyr.css" />
 
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
 <style>
     :root {
         --color-primary: #032336bd;
@@ -15,10 +16,16 @@
         --video-shadow-strong: rgba(0, 0, 0, 0.6);
     }
 
+    html,
+    body {
+        margin: 0;
+        padding: 0;
+    }
+
     .video-container {
         position: relative;
         width: 100%;
-        height: auto;
+        height: 100%;
         min-height: 200px;
         max-height: 100vh;
         background-color: transparent;
@@ -89,7 +96,7 @@
         inset: 0;
         width: 100%;
         height: 100%;
-        object-fit: contain !important;
+        object-fit: fill !important;
         display: block;
     }
 
@@ -118,9 +125,6 @@
         }
     }
 
-    .plyr {
-        height: 100%;
-    }
 
     .plyr__controls {
         padding-inline: 10px;
