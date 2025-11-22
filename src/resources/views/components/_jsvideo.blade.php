@@ -120,10 +120,6 @@
             }
         });
 
-        if (isIos) {
-            video.removeAttribute("playsinline");
-        }
-
         video.addEventListener("canplay", () => {
             loader.style.display = "none";
         }, {
@@ -132,7 +128,11 @@
 
 
         @if (isset($fullScreenStatus) && $fullScreenStatus == 'off')
-            document.querySelector('.plyr').style.height = "95%";
+            if (isIOS()) {
+                document.querySelector('.plyr').style.height = "100%";
+            } else {
+                document.querySelector('.plyr').style.height = "95%";
+            }
             document.addEventListener('dblclick', function(event) {
                 player.fullscreen.exit();
             });
