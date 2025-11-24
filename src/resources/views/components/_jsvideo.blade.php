@@ -98,11 +98,9 @@
         }
         // Native HLS with manual quality parsing
         else if (video.canPlayType("application/vnd.apple.mpegurl")) {
-            console.log('Using native HLS with manual quality parsing');
 
             // Parse manifest to get quality levels
             const qualities = await parseM3U8Manifest(videoSource);
-            console.log('Parsed qualities:', qualities);
 
             // Set initial source
             video.src = videoSource;
@@ -118,10 +116,8 @@
         const video = document.getElementById("player");
 
         if (video.canPlayType("application/vnd.apple.mpegurl")) {
-            console.log('Fallback: Using native HLS with manual quality parsing');
 
             const qualities = await parseM3U8Manifest(videoSource);
-            console.log('Fallback parsed qualities:', qualities);
 
             video.src = videoSource;
 
@@ -219,7 +215,6 @@
                         // Native quality switching - change source
                         const quality = nativeQualities.find(q => q.height === newQuality);
                         if (quality && quality.url) {
-                            console.log('Switching to quality:', newQuality, quality.url);
 
                             video.src = quality.url;
                             video.currentTime = currentTime;
@@ -237,7 +232,6 @@
             if (loader) {
                 loader.style.display = "none";
             }
-            console.log('Player ready. Qualities available:', availableQualities);
         });
 
         // Store current quality for reference
