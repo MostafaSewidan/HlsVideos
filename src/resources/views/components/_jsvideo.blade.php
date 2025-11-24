@@ -2,32 +2,145 @@
 <script src="https://cdn.plyr.io/3.7.8/plyr.polyfilled.js"></script>
 
 <script>
-    function videoPlayerIoRun(source = null) {
+    async function parseM3U8Manifest(url) {
+        try {
+            const response = await fetch(url);
+            const manifestText = await response.text();
+
+            const qualities = [];
+            const lines = manifestText.split('\n');
+
+            for (let i = 0; i < lines.length; i++) {
+                const line = lines[i].trim();
+
+                // Look for stream info lines
+                if (line.startsWith('#EXT-X-STREAM-INF:')) {
+                    // Extract resolution
+                    const resolutionMatch = line.match(/RESOLUTION=(\d+)x(\d+)/);
+                    // Extract bandwidth for sorting
+                    const bandwidthMatch = line.match(/BANDWIDTH=(\d+)/);
+
+                    if (resolutionMatch) {
+                        const width = parseInt(resolutionMatch[1]);
+                        const height = parseInt(resolutionMatch[2]);
+                        const bandwidth = bandwidthMatch ? parseInt(bandwidthMatch[1]) : 0;
+
+                        // Get the variant URL (next non-comment line)
+                        let variantUrl = '';
+                        for (let j = i + 1; j < lines.length; j++) {
+                            if (!lines[j].trim().startsWith('#')) {
+                                variantUrl = lines[j].trim();
+                                break;
+                            }
+                        }
+
+                        // Make absolute URL if needed
+                        if (variantUrl && !variantUrl.startsWith('http')) {
+                            const baseUrl = url.substring(0, url.lastIndexOf('/') + 1);
+                            variantUrl = baseUrl + variantUrl;
+                        }
+
+                        qualities.push({
+                            height: height,
+                            width: width,
+                            bandwidth: bandwidth,
+                            url: variantUrl
+                        });
+                    }
+                }
+            }
+
+            // Sort by height (quality) descending
+            qualities.sort((a, b) => b.height - a.height);
+
+            // Remove duplicates based on height
+            const uniqueQualities = qualities.filter((q, index, self) =>
+                index === self.findIndex((t) => t.height === q.height)
+            );
+
+            return uniqueQualities;
+        } catch (error) {
+            console.error('Error parsing M3U8:', error);
+            return [];
+        }
+    }
+
+    async function videoPlayerIoRun(source = null) {
+        const video = document.getElementById("player");
+        const videoSource = source ?? video.querySelector("source").src;
+
+        // Try HLS.js first (works in most WebViews)
+        if (Hls.isSupported()) {
+            const hls = new Hls({
+                enableWorker: true,
+                maxBufferLength: 30,
+                maxMaxBufferLength: 600,
+            });
+
+            hls.loadSource(videoSource);
+            hls.attachMedia(video);
+
+            hls.on(Hls.Events.MANIFEST_PARSED, function() {
+                const availableQualities = hls.levels
+                    .map(l => l.height)
+                    .filter((v, i, a) => a.indexOf(v) === i)
+                    .sort((a, b) => b - a);
+
+                initPlyr(availableQualities, hls, null);
+            });
+
+            hls.on(Hls.Events.ERROR, function(event, data) {
+                if (data.fatal) {
+                    console.error('Fatal HLS error, falling back to native:', data);
+                    fallbackToNative(videoSource);
+                }
+            });
+        }
+        // Native HLS with manual quality parsing
+        else if (video.canPlayType("application/vnd.apple.mpegurl")) {
+            console.log('Using native HLS with manual quality parsing');
+
+            // Parse manifest to get quality levels
+            const qualities = await parseM3U8Manifest(videoSource);
+            console.log('Parsed qualities:', qualities);
+
+            // Set initial source
+            video.src = videoSource;
+
+            video.addEventListener("loadedmetadata", () => {
+                const qualityHeights = qualities.map(q => q.height);
+                initPlyr(qualityHeights, null, qualities);
+            });
+        }
+    }
+
+    async function fallbackToNative(videoSource) {
         const video = document.getElementById("player");
 
-        const hls = new Hls();
-        hls.loadSource(source ?? video.querySelector("source").src);
-        hls.attachMedia(video);
+        if (video.canPlayType("application/vnd.apple.mpegurl")) {
+            console.log('Fallback: Using native HLS with manual quality parsing');
 
-        hls.on(Hls.Events.MANIFEST_PARSED, function() {
+            const qualities = await parseM3U8Manifest(videoSource);
+            console.log('Fallback parsed qualities:', qualities);
 
+            video.src = videoSource;
 
-            const availableQualities = hls.levels
-                .map(l => l.height)
-                .filter((v, i, a) => a.indexOf(v) === i)
-                .sort((a, b) => b - a);
-
-            initPlyr(availableQualities, hls);
-        });
+            video.addEventListener("loadedmetadata", () => {
+                const qualityHeights = qualities.map(q => q.height);
+                initPlyr(qualityHeights, null, qualities);
+            });
+        }
     }
 
     function isIOS() {
         return /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
     }
 
-    function initPlyr(availableQualities, hls) {
+    function initPlyr(availableQualities, hls, nativeQualities) {
         const video = document.getElementById("player");
         const loader = document.getElementById("video-loader");
+        const isIos = isIOS();
+
         const i18n_ar = {
             restart: "إعادة التشغيل",
             rewind: "رجوع 10 ثواني",
@@ -56,6 +169,7 @@
             normal: "عادي",
             quality: "الجودة",
             loop: "تشغيل متكرر",
+            auto: "تلقائي",
         };
 
         const controls = [
@@ -71,41 +185,65 @@
             "settings"
         ];
 
+        // Add fullscreen based on your condition
         @if ((isset($fullScreenStatus) && $fullScreenStatus == 'on') || !isset($fullScreenStatus))
             controls.push("fullscreen");
         @endif
 
+        const hasQualities = availableQualities && availableQualities.length > 0;
+        const settingsOptions = hasQualities ? ["quality", "speed", "captions"] : ["speed", "captions"];
+
         const player = new Plyr(video, {
             i18n: "{{ app()->getLocale() }}" === "ar" ? i18n_ar : {},
             controls: controls,
-            settings: ["quality", "speed", "captions"],
+            settings: settingsOptions,
             tooltips: {
                 controls: true,
                 seek: true
             },
-            quality: {
+            quality: hasQualities ? {
                 default: availableQualities[0] || 720,
                 options: availableQualities,
                 forced: true,
                 onChange: newQuality => {
+                    const currentTime = video.currentTime;
+                    const wasPlaying = !video.paused;
+
                     if (hls) {
+                        // HLS.js quality switching
                         const level = hls.levels.findIndex(l => l.height === newQuality);
                         if (level !== -1) {
                             hls.currentLevel = level;
                         }
+                    } else if (nativeQualities) {
+                        // Native quality switching - change source
+                        const quality = nativeQualities.find(q => q.height === newQuality);
+                        if (quality && quality.url) {
+                            console.log('Switching to quality:', newQuality, quality.url);
+
+                            video.src = quality.url;
+                            video.currentTime = currentTime;
+
+                            if (wasPlaying) {
+                                video.play().catch(e => console.error('Play error:', e));
+                            }
+                        }
                     }
                 }
-            }
+            } : {}
         });
-        player.on('ready', (event) => {
-            loader.style.display = "none";
-        });
-        // video.addEventListener("canplay", () => {
-        //     loader.style.display = "none";
-        // }, {
-        //     once: true
-        // });
 
+        player.on('ready', (event) => {
+            if (loader) {
+                loader.style.display = "none";
+            }
+            console.log('Player ready. Qualities available:', availableQualities);
+        });
+
+        // Store current quality for reference
+        if (nativeQualities && hasQualities) {
+            player.currentQuality = availableQualities[0];
+        }
 
         @if (isset($fullScreenStatus) && $fullScreenStatus == 'off')
             if (isIOS()) {
