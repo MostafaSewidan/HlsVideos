@@ -38,7 +38,7 @@
     }
 
     .video-overlay-left {
-        background: red;
+        background: transparent;
         width: 43%;
         height: 80%;
         position: absolute;
@@ -48,7 +48,7 @@
     }
 
     .video-overlay-right {
-        background: red;
+        background: transparent;
         width: 43%;
         height: 80%;
         position: absolute;
@@ -89,7 +89,6 @@
         width: 98%;
         top: 10px;
     }
-
 
     /* .video-container video {
         position: absolute;
