@@ -75,6 +75,11 @@
         margin-right: 0 !important;
     }
 
+    .plyr__time {
+        position: absolute !important;
+        left: 0 !important;
+    }
+
     .plyr__controls button.plyr__controls__item {
         position: absolute !important;
         left: 2px;
@@ -166,7 +171,7 @@
 
     .plyr__controls .plyr__time--current {
         position: absolute !important;
-        left: 135px !important;
+        left: 0 !important;
         bottom: 12px !important;
 
     }

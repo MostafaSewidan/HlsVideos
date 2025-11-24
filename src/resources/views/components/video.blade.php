@@ -64,14 +64,81 @@
     @include('hls-videos::components._jsvideo')
     <script>
         document.addEventListener('DOMContentLoaded', function() {
-            document.querySelector('.video-overlay-left').addEventListener('dblclick', function(e) {
+            // Helper to detect single and double tap on mobile
+            function addTapListeners(element, doubleTapCallback, singleTapCallback) {
+                let lastTap = 0;
+                let timeout;
+                element.addEventListener('touchend', function(e) {
+                    const currentTime = new Date().getTime();
+                    const tapLength = currentTime - lastTap;
+                    clearTimeout(timeout);
+                    if (tapLength < 300 && tapLength > 0) {
+                        doubleTapCallback(e);
+                        lastTap = 0;
+                    } else {
+                        lastTap = currentTime;
+                        timeout = setTimeout(() => {
+                            singleTapCallback(e);
+                        }, 350);
+                    }
+                });
+            }
 
+            // Desktop double-click and single click events
+            const leftOverlay = document.querySelector('.video-overlay-left');
+            const rightOverlay = document.querySelector('.video-overlay-right');
+
+            leftOverlay.addEventListener('dblclick', function(e) {
                 player.rewind(10);
             });
-            document.querySelector('.video-overlay-right').addEventListener('dblclick', function(e) {
-
+            rightOverlay.addEventListener('dblclick', function(e) {
                 player.forward(10);
             });
+
+            leftOverlay.addEventListener('click', function(e) {
+                // Toggle between pause and play on single click
+                if (player.playing) {
+                    player.pause();
+                } else {
+                    player.play();
+                }
+            });
+            rightOverlay.addEventListener('click', function(e) {
+                if (player.playing) {
+                    player.pause();
+                } else {
+                    player.play();
+                }
+            });
+
+            // Mobile touch tap events
+            addTapListeners(
+                leftOverlay,
+                function(e) {
+                    player.rewind(10);
+                },
+                function(e) {
+                    // Toggle between pause and play on single tap
+                    if (player.playing) {
+                        player.pause();
+                    } else {
+                        player.play();
+                    }
+                }
+            );
+            addTapListeners(
+                rightOverlay,
+                function(e) {
+                    player.forward(10);
+                },
+                function(e) {
+                    if (player.playing) {
+                        player.pause();
+                    } else {
+                        player.play();
+                    }
+                }
+            );
         });
     </script>
 @endpush
