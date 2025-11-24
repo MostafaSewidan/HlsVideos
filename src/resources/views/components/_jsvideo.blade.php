@@ -5,6 +5,7 @@
     function videoPlayerIoRun(source = null) {
         const video = document.getElementById("player");
 
+
         if (Hls.isSupported()) {
             const hls = new Hls();
             hls.loadSource(source ?? video.querySelector("source").src);
@@ -120,12 +121,9 @@
             }
         });
 
-        video.addEventListener("canplay", () => {
+        player.on('ready', (event) => {
             loader.style.display = "none";
-        }, {
-            once: true
         });
-
 
         @if (isset($fullScreenStatus) && $fullScreenStatus == 'off')
             if (isIOS()) {

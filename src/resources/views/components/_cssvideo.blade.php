@@ -1,7 +1,6 @@
 <link rel="stylesheet" href="https://cdn.plyr.io/3.7.8/plyr.css" />
 
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-
 <style>
     :root {
         --color-primary: #032336bd;
@@ -26,8 +25,8 @@
         position: relative;
         width: 100%;
         height: 100%;
-        min-height: 200px;
-        max-height: 100vh;
+        /* min-height: 200px;
+        max-height: 100vh; */
         background-color: transparent;
         overflow: hidden;
         box-shadow: 0 8px 32px var(--video-shadow-medium);
@@ -125,6 +124,9 @@
         }
     }
 
+    .plyr {
+        height: 100%;
+    }
 
     .plyr__controls {
         padding-inline: 10px;
