@@ -38,7 +38,7 @@
     }
 
     .video-overlay-left {
-        background: transparent;
+        background: red;
         width: 43%;
         height: 80%;
         position: absolute;
@@ -48,7 +48,7 @@
     }
 
     .video-overlay-right {
-        background: transparent;
+        background: red;
         width: 43%;
         height: 80%;
         position: absolute;
@@ -75,11 +75,6 @@
         margin-right: 0 !important;
     }
 
-    .plyr__time {
-        position: absolute !important;
-        left: 0 !important;
-    }
-
     .plyr__controls button.plyr__controls__item {
         position: absolute !important;
         left: 2px;
@@ -94,6 +89,7 @@
         width: 98%;
         top: 10px;
     }
+
 
     /* .video-container video {
         position: absolute;
@@ -171,7 +167,7 @@
 
     .plyr__controls .plyr__time--current {
         position: absolute !important;
-        left: 0 !important;
+        left: 135px !important;
         bottom: 12px !important;
 
     }
