@@ -5,30 +5,20 @@
     function videoPlayerIoRun(source = null) {
         const video = document.getElementById("player");
 
+        const hls = new Hls();
+        hls.loadSource(source ?? video.querySelector("source").src);
+        hls.attachMedia(video);
 
-        if (Hls.isSupported()) {
-            const hls = new Hls();
-            hls.loadSource(source ?? video.querySelector("source").src);
-            hls.attachMedia(video);
-
-            hls.on(Hls.Events.MANIFEST_PARSED, function() {
+        hls.on(Hls.Events.MANIFEST_PARSED, function() {
 
 
-                const availableQualities = hls.levels
-                    .map(l => l.height)
-                    .filter((v, i, a) => a.indexOf(v) === i)
-                    .sort((a, b) => b - a);
+            const availableQualities = hls.levels
+                .map(l => l.height)
+                .filter((v, i, a) => a.indexOf(v) === i)
+                .sort((a, b) => b - a);
 
-                initPlyr(availableQualities, hls);
-            });
-            // safari support 
-        } else if (video.canPlayType("application/vnd.apple.mpegurl")) {
-            video.addEventListener("loadedmetadata", () => {
-                initPlyr([], null);
-            });
-        }
-
-        // const player = new Plyr(video);
+            initPlyr(availableQualities, hls);
+        });
     }
 
     function isIOS() {
@@ -38,7 +28,6 @@
     function initPlyr(availableQualities, hls) {
         const video = document.getElementById("player");
         const loader = document.getElementById("video-loader");
-        const isIos = isIOS();
         const i18n_ar = {
             restart: "إعادة التشغيل",
             rewind: "رجوع 10 ثواني",
@@ -69,19 +58,7 @@
             loop: "تشغيل متكرر",
         };
 
-        const controls = isIos ? [
-            "play-large",
-            "rewind",
-            "play",
-            "fast-forward",
-            "progress",
-            "current-time",
-            "duration",
-            "mute",
-            "volume",
-            "settings"
-
-        ] : [
+        const controls = [
             "play-large",
             "rewind",
             "play",
@@ -120,10 +97,15 @@
                 }
             }
         });
-
         player.on('ready', (event) => {
             loader.style.display = "none";
         });
+        // video.addEventListener("canplay", () => {
+        //     loader.style.display = "none";
+        // }, {
+        //     once: true
+        // });
+
 
         @if (isset($fullScreenStatus) && $fullScreenStatus == 'off')
             if (isIOS()) {
