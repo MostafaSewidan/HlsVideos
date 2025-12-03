@@ -16,6 +16,7 @@ Route::middleware($middleware)->group(function () {
             Route::post('assign-video-to-module', [HlsVideoController::class, 'assignVideoToModule'])->name('assign-video-to-module');
             Route::get('video-options/{videoId?}', [HlsVideoController::class, 'getOptions'])->name('options');
             Route::delete('video-delete/{videoId}', [HlsVideoController::class, 'deleteVideo'])->name('delete');
+            Route::get('download/{videoId}/{quality}', [HlsVideoController::class, 'downloadVideo'])->name('download');
         });
 
     Route::name('hls.folders.')

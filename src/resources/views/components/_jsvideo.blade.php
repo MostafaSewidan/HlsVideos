@@ -178,7 +178,8 @@
             "duration",
             "mute",
             "volume",
-            "settings"
+            "settings",
+            "download-button"
         ];
 
         // Add fullscreen based on your condition
@@ -239,6 +240,21 @@
             player.currentQuality = availableQualities[0];
         }
 
+        if (availableQualities) {
+            const videoDownloadRoute =
+                "{{ $video?->id ? route('hls.videos.download', ['videoId' => $video->id, 'quality' => '_Q_']) : '#' }}";
+
+            player.downloadOptions = availableQualities.map(q => {
+                return {
+                    label: `${q}p`,
+                    url: videoDownloadRoute.replace("_Q_", q)
+                };
+            });
+            player.once("ready", () => {
+                addDownloadButton(player);
+            });
+        }
+
         @if (isset($fullScreenStatus) && $fullScreenStatus == 'off')
             if (isIOS()) {
                 document.querySelector('.plyr').style.height = "100%";
@@ -267,6 +283,59 @@
                 Controls.postMessage('controlshidden');
             });
         @endif
+    }
+
+    function addDownloadButton(player) {
+
+        const settingsMenu = document.querySelector('.plyr__menu');
+        if (!settingsMenu) return;
+
+        const btn = document.createElement("button");
+        btn.className = "plyr__control download-trigger";
+        btn.style.marginLeft = "10px";
+        btn.innerHTML = `
+            <i class="fa-solid fa-download"></i>
+        `;
+
+        btn.addEventListener("click", () => openDownloadMenu(player));
+
+        settingsMenu.appendChild(btn);
+    }
+
+    function openDownloadMenu(player) {
+        const container = document.createElement("div");
+        container.className = "download-menu plyr__menu__container";
+
+        container.innerHTML = player.downloadOptions.map(opt => `
+            <button class="download-quality"
+                    data-url="${opt.url}">
+                 ${opt.label} تحميل 
+            </button>
+        `).join('');
+
+        document.querySelector('.plyr').appendChild(container);
+
+        setTimeout(() => {
+            document.addEventListener("click", function close(e) {
+                if (!container.contains(e.target)) {
+                    container.remove();
+                    document.removeEventListener("click", close);
+                }
+            });
+
+            const settingsBtn = document.querySelector('button[data-plyr="settings"]');
+            if (settingsBtn) {
+                settingsBtn.addEventListener("click", () => {
+                    container.remove();
+                });
+            }
+        }, 100);
+
+        container.querySelectorAll(".download-quality").forEach(btn => {
+            btn.addEventListener("click", () => {
+                window.open(btn.dataset.url, "_blank");
+            });
+        });
     }
 
     document.addEventListener("DOMContentLoaded", function() {

@@ -179,6 +179,34 @@
 
     }
 
+    .download-menu {
+        position: absolute;
+        bottom: 46px;
+        right: 42px;
+        padding: 10px;
+        border-radius: 6px;
+        z-index: 9999;
+    }
+
+    .download-quality {
+        display: block;
+        width: 100%;
+        text-align: right;
+        padding: 8px;
+        background: none;
+        border: none;
+        cursor: pointer;
+    }
+
+    .download-quality:hover {
+        background: #dadada;
+        border-radius: 6px;
+    }
+    
+    .plyr__menu__container{
+        right: 39px;
+    }
+
     @media (max-width: 600px) {
         .plyr__controls__item.plyr__time--current.plyr__time {
             bottom: 9px !important;

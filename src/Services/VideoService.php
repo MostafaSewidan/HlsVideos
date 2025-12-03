@@ -302,4 +302,53 @@ class VideoService
 
         ConvertQualityJob::dispatch($videoQuality, app('currentTenant'))->onQueue('default');
     }
+
+    static function downloadVideoLocale($videoId, $quality)
+    {
+        try {
+            $originalPath = VideoService::getMediaPath().$videoId;
+            $path = "$originalPath/$quality/index.m3u8";
+            $content = Storage::disk(config('hls-videos.stream_disk'))->get($path);
+
+            $oldTsFilesUrl = route(config('hls-videos.access_route_stream'), [$videoId, $quality]);
+            $newTsFilesUrl = "https://stepsio-stream.org/$originalPath/{$quality}";
+            $content = str_replace($oldTsFilesUrl, $newTsFilesUrl, $content);
+            $tsFiles = [];
+
+            if (strpos($content, '#EXT-X-STREAM-INF') !== false) {
+                preg_match('/([a-zA-Z0-9_\-]+\.m3u8)/', $content, $match);
+                if (!empty($match[1])) {
+                    $variantPath = "$originalPath/$quality/" . $match[1];
+                    $variantContent = Storage::disk(config('hls-videos.stream_disk'))->get($variantPath);
+                    $tsFiles = self::getTsFilesFromPlaylistFile($variantContent);
+                }
+            } else {
+                $tsFiles = self::getTsFilesFromPlaylistFile($content);
+            }
+            $tsFilesUrls = [];
+
+            foreach ($tsFiles as $file) {
+                $tsFilesUrls[] = [
+                    'folder_name' => $videoId,
+                    'file_name' => $file
+                ];
+            }
+
+            return [
+                "playlist" => [
+                    "file_name" => "index.m3u8",
+                    "file_content" => $content
+                ],
+                "ts_files" => $tsFilesUrls
+            ];
+        } catch (\Throwable $th) {
+            abort(404);
+        }
+    }
+
+    static function getTsFilesFromPlaylistFile($masterPlaylistFile)
+    {
+        preg_match_all('/([a-zA-Z0-9_\-]+\.ts)/', $masterPlaylistFile, $matches);
+        return $matches[1] ?? [];
+    }
 }

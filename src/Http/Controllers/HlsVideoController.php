@@ -6,7 +6,10 @@ use HlsVideos\Http\Requests\{UploadVideoRequest, AssignVideoToModuleRequest};
 use HlsVideos\Models\HlsFolder;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
+use Illuminate\Support\Facades\Storage;
 use HlsVideos\Services\VideoService;
+use Symfony\Component\Process\Process;
+use Illuminate\Support\Facades\File;
 
 class HlsVideoController extends Controller
 {
@@ -101,4 +104,64 @@ class HlsVideoController extends Controller
             return Response()->json([false, $e->errorInfo[2]], 500);
         }
     }
+
+    public function downloadVideo(Request $request, $videoId, $quality)
+    {
+        try {
+            $downloadData = $this->videoService->downloadVideoLocale($videoId, $quality);
+            $tsFiles = $downloadData['ts_files'];
+
+            if (empty($tsFiles)) {
+                abort(404, 'No video segments found');
+            }
+
+            $originalPath = $this->videoService->getMediaPath() . $videoId;
+            $disk = Storage::disk(config('hls-videos.stream_disk'));
+
+            $tempDir = storage_path("app/downloads/$originalPath/$quality");
+            @mkdir($tempDir, 0755, true);
+
+            $playlistFile = 'vd.m3u8';
+            if (!$disk->exists("$originalPath/$quality/$playlistFile")) {
+                $playlistFile = 'index.m3u8';
+            }
+
+            $playlistContent = $downloadData['playlist']['file_content'];
+            file_put_contents("$tempDir/$playlistFile", $playlistContent);
+
+            foreach ($tsFiles as $ts) {
+                $content = $disk->get("$originalPath/$quality/{$ts['file_name']}");
+                file_put_contents("$tempDir/{$ts['file_name']}", $content);
+            }
+
+            $playlistPath = "$tempDir/$playlistFile";
+
+            $process = new Process([
+                'ffmpeg',
+                '-protocol_whitelist', 'file,http,https,tcp,tls,crypto',
+                '-i', $playlistPath,
+                '-c', 'copy',
+                '-f', 'mp4',
+                'pipe:1'
+            ]);
+
+            $process->setTimeout(null);
+            $process->start();
+
+            return response()->streamDownload(function () use ($process, $tempDir) {
+                foreach ($process as $data) {
+                    echo $data;
+                }
+
+                File::deleteDirectory($tempDir);
+
+            }, "$videoId-$quality.mp4", [
+                "Content-Type" => "video/mp4",
+            ]);
+
+        } catch (\Throwable $th) {
+            abort(500, $th->getMessage());
+        }
+    }
+
 }
