@@ -95,6 +95,8 @@
 
         // Try HLS.js first (works in most WebViews)
         if (Hls.isSupported()) {
+            console.log('Hls.js supported');
+            console.log('shouldUseWorker():', shouldUseWorker());
             const hls = new Hls({
                 enableWorker: shouldUseWorker(),
                 maxBufferLength: 30,
