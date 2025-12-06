@@ -65,6 +65,30 @@
         }
     }
 
+    function shouldUseWorker() {
+        // 1. هل يدعم المتصفح Web Workers؟
+        if (typeof Worker === 'undefined') return false;
+
+        // 2. عدد الأنوية إن كانت متوفرة (heuristic)
+        const cores = navigator.hardwareConcurrency || 1;
+        if (cores >= 3) return true; // أجهزة حديثة غالبًا
+
+        // 3. userAgent heuristics للـ Android WebView / أجهزة قديمة
+        const ua = navigator.userAgent || '';
+        // علامات WebView القديمة: "wv" أو "Version/<android_version>" أو قديمة Android 4/5
+        const isAndroid = /Android/.test(ua);
+        const isWV = /\bwv\b/i.test(ua); // Android WebView has "wv"
+        const androidOld = /Android\s([0-9])/.exec(ua);
+        const androidMajor = androidOld ? parseInt(androidOld[1], 10) : 999;
+
+        if (isAndroid && (isWV || androidMajor <= 5)) {
+            return false; // منع استخدام workers في WebView القديمة / اندرويد القديم
+        }
+
+        // 4. كخيار افتراضي: استخدم worker لو لم يظهر سبب لرفضه
+        return true;
+    }
+
     async function videoPlayerIoRun(source = null) {
         const video = document.getElementById("player");
         const videoSource = source ?? video.querySelector("source").src;
@@ -72,9 +96,10 @@
         // Try HLS.js first (works in most WebViews)
         if (Hls.isSupported()) {
             const hls = new Hls({
-                enableWorker: true,
+                enableWorker: shouldUseWorker(),
                 maxBufferLength: 30,
-                maxMaxBufferLength: 600,
+                maxMaxBufferLength: 60,
+                maxBufferHole: 0.5,
             });
 
             hls.loadSource(videoSource);
