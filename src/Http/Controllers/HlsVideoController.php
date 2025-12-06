@@ -24,15 +24,6 @@ class HlsVideoController extends Controller
 
             if ($model)
                 $model->hlsVideos()->attach([$request->video_id]);
-
-            if ($request->folder_id) {
-                $folder = HlsFolder::find($request->folder_id);
-
-                $folder->videos()->attach(
-                    $request->video_id,
-                    ['title' => $request->video_title]
-                );
-            }
             
             return $this->getOptions($request->video_id);
 
