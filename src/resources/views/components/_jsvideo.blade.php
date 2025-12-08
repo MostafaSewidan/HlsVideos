@@ -97,12 +97,7 @@
         if (Hls.isSupported()) {
             console.log('Hls.js supported');
             console.log('shouldUseWorker():', shouldUseWorker());
-            const hls = new Hls({
-                enableWorker: shouldUseWorker(),
-                maxBufferLength: 30,
-                maxMaxBufferLength: 60,
-                maxBufferHole: 0.5,
-            });
+            const hls = new Hls();
 
             hls.loadSource(videoSource);
             hls.attachMedia(video);
