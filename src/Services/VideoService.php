@@ -131,7 +131,7 @@ class VideoService
         if ($model)
             $model->hlsVideos()->attach([$video->id]);
 
-        $folder = HlsFolder::find($folderId) 
+        $folder = HlsFolder::find($folderId)
             ?? config('hls-videos.repositories.hls_folder')::mainSharedFolders(HlsFolder::query())->first();
         if ($folder) {
             $folder->videos()->attach(
@@ -244,7 +244,7 @@ class VideoService
         ];
     }
 
-    static function getStreamTemporaryLink($videoId, $quality = null, $file = null, $domain = null)
+    static function getStreamFileContent($videoId, $quality = null, $file = null, $domain = null)
     {
         try {
             $path = VideoService::getMediaPath().$videoId;
@@ -293,6 +293,34 @@ class VideoService
         }
     }
 
+    static function getStreamTemporaryLink($videoId, $quality = null, $file = null)
+    {
+        $video = HlsVideo::ready()->findOrFail($videoId);
+
+        $path = VideoService::getMediaPath().$video->id;
+
+        if ($quality)
+            $path .= "/$quality";
+
+        if ($file)
+            $path .= "/$file";
+        else
+            $path .= "/index.m3u8";
+
+        if (! Storage::disk(config('hls-videos.stream_disk'))->exists($path)) {
+            return false;
+        }
+
+        // Optional: auth check
+        // if (auth()->user()->cannot('view-video', $id)) abort(403);
+
+        return Storage::disk(config('hls-videos.stream_disk'))->temporaryUrl(
+            $path,
+            now()->addMinutes(5) // signed URL valid for 15 minutes
+        );
+    }
+
+
     public static function dispatchConvertQualityJob($videoQuality): void
     {
         // Create directories
@@ -301,5 +329,42 @@ class VideoService
         }
 
         ConvertQualityJob::dispatch($videoQuality, app('currentTenant'))->onQueue('default');
+    }
+
+    static function downloadVideoLocale($localPath, $video)
+    {
+        $firstQ = $video->qualities()->oldest()->first();
+        $path = self::getMediaPath()."$video->id/$firstQ->quality/vd.m3u8";
+
+        $content = Storage::disk(config('hls-videos.stream_disk'))->get($path);
+        $oldTsFilesUrl = route(config('hls-videos.access_route_stream'), [$video->id, $firstQ->quality]);
+        $newTsFilesUrl = "$localPath/$video->id";
+        $content = str_replace($oldTsFilesUrl, $newTsFilesUrl, $content);
+        $tsFiles = self::getTsFilesFromPlaylistFile($content);
+        $tsFilesUrls = [];
+
+        foreach ($tsFiles as $file) {
+            $tsFilesUrls[] = [
+                'folder_name' => $video->id,
+                'file_name' => $file,
+                "donwload_url" => route(config('hls-videos.download_route_ts_files'), [
+                    $video->id, $firstQ->quality, $file
+                ])
+            ];
+        }
+
+        return [
+            "playlist" => [
+                "file_name" => "index.m3u8",
+                "file_content" => $content
+            ],
+            "ts_files" => $tsFilesUrls
+        ];
+    }
+
+    static function getTsFilesFromPlaylistFile($masterPlaylistFile)
+    {
+        preg_match_all('/([a-zA-Z0-9_\-]+\.ts)/', $masterPlaylistFile, $matches);
+        return $matches[1] ?? [];
     }
 }
