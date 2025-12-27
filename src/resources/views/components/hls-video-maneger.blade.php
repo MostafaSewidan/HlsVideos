@@ -1026,9 +1026,6 @@
             // Update UI
             updateLoadMoreButton();
             showLoadingMoreHls();
-
-            // Build API URL
-            console.log(existingVideosState.currentFolderId);
             
             const baseUrl = `/hls/folders/list?id=${existingVideosState.currentFolderId}`;
             
@@ -1610,7 +1607,6 @@
                     window.location.reload();
                 })
                 .catch(error => {
-                    console.log(error);
                     // Re-enable button
                     confirmBtn.disabled = false;
                     confirmBtn.innerHTML = originalBtnText;
