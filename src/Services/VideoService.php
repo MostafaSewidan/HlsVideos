@@ -380,8 +380,7 @@ class VideoService
                 "file_name" => "index.m3u8",
                 "file_content" => $content
             ],
-            "ts_files" => [
-                'folder_name' => $video->id,
+            "file_data" => [
                 'file_name' => 'vd.zip',
                 "donwload_url" => "https://stepsio-stream.org/$replacePath/vd.zip"
             ]
