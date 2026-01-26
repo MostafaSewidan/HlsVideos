@@ -8,6 +8,7 @@ use HlsVideos\Models\HlsVideoQuality;
 use HlsVideos\Services\VideoService;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Event;
+use HlsVideos\Services\CompressService;
 
 class VideoConverted
 {
@@ -50,6 +51,7 @@ class VideoConverted
 
          if (! $this->video->qualities()->notReady()->count()) {
 
+            CompressService::compressAndUploadVideo($this->video);
             Storage::disk(config('hls-videos.temp_disk'))->deleteDirectory(VideoService::getMediaPath().$this->video->id);
          }
       }

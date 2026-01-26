@@ -362,6 +362,32 @@ class VideoService
         ];
     }
 
+    static function downloadCompressedVideoLocale($localPath, $video)
+    {
+        $firstQ = $video->qualities()->oldest()->first();
+        $path = self::getMediaPath()."$video->id/$firstQ->quality/vd.m3u8";
+        $replacePath = self::getMediaPath().$video->id;
+
+        $content = Storage::disk(config('hls-videos.stream_disk'))->get($path);
+        $oldTsFilesUrl = route(config('hls-videos.access_route_stream'), [$video->id, $firstQ->quality]);
+        $newTsFilesUrl = "$localPath/$video->id";
+        $content = str_replace($oldTsFilesUrl, $newTsFilesUrl, $content);
+
+
+
+        return [
+            "playlist" => [
+                "file_name" => "index.m3u8",
+                "file_content" => $content
+            ],
+            "ts_files" => [
+                'folder_name' => $video->id,
+                'file_name' => 'vd.zip',
+                "donwload_url" => "https://stepsio-stream.org/$replacePath/vd.zip"
+            ]
+        ];
+    }
+
     static function getTsFilesFromPlaylistFile($masterPlaylistFile)
     {
         preg_match_all('/([a-zA-Z0-9_\-]+\.ts)/', $masterPlaylistFile, $matches);
