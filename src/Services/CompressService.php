@@ -6,7 +6,6 @@ use HlsVideos\Models\HlsVideo;
 use Illuminate\Support\Facades\Storage;
 use HlsVideos\Services\VideoService;
 
-
 class CompressService
 {
     static function compressAndUploadVideo(HlsVideo $video)

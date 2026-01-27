@@ -9,7 +9,8 @@ use Pion\Laravel\ChunkUpload\Handler\HandlerFactory;
 use Pion\Laravel\ChunkUpload\Receiver\FileReceiver;
 use Illuminate\Support\Facades\Storage;
 use HlsVideos\Jobs\ConvertQualityJob;
-
+use Illuminate\Support\Str;
+use ProtoneMedia\LaravelFFMpeg\Exporters\HLSExporter;
 
 class VideoService
 {
@@ -26,11 +27,10 @@ class VideoService
                 ->save(VideoService::getMediaPath()."$video->id/thumb.jpg");
         }
     }
+
     public function getVideoDuration(HlsVideo $video)
     {
-
         try {
-
             $stream = $video->stream_data;
             $stream['duration'] = FFMpeg::fromDisk(config('hls-videos.temp_disk'))
                 ->open($video->temp_video_path)
@@ -41,6 +41,18 @@ class VideoService
         } catch (\Exception $e) {
             // Log error but don't fail the upload
             \Log::warning("Could not extract duration for video {$video->id}: ".$e->getMessage());
+        }
+    }
+
+    public function protectVideo(HlsVideo $video)
+    {
+        try {
+            $encryptionKey = HLSExporter::generateEncryptionKey();
+            $data = $video->stream_data ?? [];
+            $data['hls_key'] = base64_encode($encryptionKey);
+            $data['hls_key_id'] = Str::uuid()->toString();
+            $video->update(['stream_data' => $data]);
+        } catch (\Exception $e) {
         }
     }
 

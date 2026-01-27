@@ -4,7 +4,6 @@ namespace HlsVideos\Models;
 
 use HlsVideos\Services\VideoService;
 use Illuminate\Database\Eloquent\Model;
-use HlsVideos\Jobs\ConvertQualityJob;
 use Illuminate\Support\Facades\Storage;
 
 class HlsVideoQuality extends Model

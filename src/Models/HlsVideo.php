@@ -25,6 +25,7 @@ class HlsVideo extends Model
             $videoService = new VideoService;
             $videoService->createThumb($video);
             $videoService->getVideoDuration($video);
+            $videoService->protectVideo($video);
             $videoService->handleVideoQualities($video);
         });
 
@@ -109,6 +110,12 @@ class HlsVideo extends Model
     {
 
         return VideoService::getMediaPath()."{$this->id}/{$this->file_name}";
+    }
+
+    public function getTempFolderPathAttribute()
+    {
+
+        return VideoService::getMediaPath()."{$this->id}";
     }
 
     public function getIsReadyAttribute()
