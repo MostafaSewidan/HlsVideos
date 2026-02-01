@@ -25,6 +25,10 @@ class VideoService
                 ->export()
                 ->toDisk(config('hls-videos.thumb_disk'))
                 ->save(VideoService::getMediaPath()."$video->id/thumb.jpg");
+
+            $stream = $video->stream_data;
+            $stream['thumb_disk'] = config('hls-videos.thumb_disk');
+            $video->update(['stream_data' => $stream]);
         }
     }
 

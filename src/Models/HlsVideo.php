@@ -30,10 +30,10 @@ class HlsVideo extends Model
         });
 
         static::deleting(function ($video) {
-                $video->qualities()->delete();
-                foreach (config('hls-videos.storages') as $disk => $config) {
-                    Storage::disk($disk)->deleteDirectory(VideoService::getMediaPath().$video->id);
-                }
+            $video->qualities()->delete();
+            foreach (config('hls-videos.storages') as $disk => $config) {
+                Storage::disk($disk)->deleteDirectory(VideoService::getMediaPath().$video->id);
+            }
         });
     }
 
@@ -87,9 +87,10 @@ class HlsVideo extends Model
 
     public function getThumbUrlAttribute()
     {
-
+        $stream = $this->stream_data;
+        $thumbDisk = isset($stream['thumb_disk']) ? $stream['thumb_disk'] : config('hls-videos.thumb_disk');
         $thumbPath = VideoService::getMediaPath()."$this->id/thumb.jpg";
-        return Storage::disk(config('hls-videos.thumb_disk'))->url($thumbPath);
+        return Storage::disk($thumbDisk)->url($thumbPath);
     }
 
     public function getTempVideoAttribute()
