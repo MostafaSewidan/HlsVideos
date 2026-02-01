@@ -88,9 +88,12 @@ class HlsVideo extends Model
     public function getThumbUrlAttribute()
     {
         $stream = $this->stream_data;
-        $thumbDisk = isset($stream['thumb_disk']) ? $stream['thumb_disk'] : config('hls-videos.thumb_disk');
         $thumbPath = VideoService::getMediaPath()."$this->id/thumb.jpg";
-        return Storage::disk($thumbDisk)->url($thumbPath);
+        if (isset($stream['thumb_disk'])) {
+            return "https://stepsio-stream.org/".$thumbPath;
+        } else {
+            return Storage::disk(config('hls-videos.thumb_disk'))->url($thumbPath);
+        }
     }
 
     public function getTempVideoAttribute()
