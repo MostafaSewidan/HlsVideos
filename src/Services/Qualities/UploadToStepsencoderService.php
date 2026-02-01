@@ -47,6 +47,11 @@ class UploadToStepsencoderService implements VideoQualityProcessorInterface
         $client = new \GuzzleHttp\Client();
 
         try {
+            logger("tenant",
+                [
+                    'name' => 'tenant_id',
+                    'contents' => app('currentTenant')->id,
+                ]);
             $response = $client->post("$nodeUrl/hls/videos/upload-from-server/{$this->video->id}", [
                 'headers' => $this->headers,
                 'allow_redirects' => true,
