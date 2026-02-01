@@ -340,7 +340,7 @@ class VideoService
             mkdir($videoQuality->process_folder_path, 0755, true);
         }
 
-        ConvertQualityJob::dispatch($videoQuality, app('currentTenant'))->onQueue('default');
+        ConvertQualityJob::dispatch($videoQuality, app('currentTenant'))->onQueue(config('hls-videos.convert_quality_queue_name', 'default'));
     }
 
     static function downloadVideoLocale($localPath, $video)
