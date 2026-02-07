@@ -371,7 +371,7 @@
             flex: 1;
             overflow-y: auto;
             padding: 16px 20px;
-            max-height: 400px; 
+            max-height: 400px;
         }
 
         .existing-video-item {
@@ -576,7 +576,7 @@
                 margin: 0 8px;
             }
         }
-        
+
         /* زر عرض المزيد */
         .hls-load-more-btn {
             position: relative;
@@ -644,20 +644,27 @@
         }
 
         @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
+            0% {
+                transform: rotate(0deg);
+            }
+
+            100% {
+                transform: rotate(360deg);
+            }
         }
 
         /* تحسينات للهواتف المحمولة */
         @media (max-width: 768px) {
             .hls-load-more-btn {
-                bottom: 80px; /* أعلى قليلاً لتجنب التداخل مع التذييل */
+                bottom: 80px;
+                /* أعلى قليلاً لتجنب التداخل مع التذييل */
                 padding: 14px 28px;
                 font-size: 16px;
             }
-            
+
             .file-manager-content {
-                padding-bottom: 100px; /* مساحة إضافية للزر */
+                padding-bottom: 100px;
+                /* مساحة إضافية للزر */
             }
         }
 
@@ -676,19 +683,23 @@
             margin-right: 8px;
             color: #4cc9f0;
         }
+
         /* Fixed scroll container */
         .existing-videos-scroll-container {
             position: relative;
             flex: 1;
-            overflow: hidden; /* Hide outer scroll */
+            overflow: hidden;
+            /* Hide outer scroll */
             display: flex;
             flex-direction: column;
         }
 
         .existing-videos-content {
             flex: 1;
-            overflow-y: auto; /* Enable scrolling */
-            max-height: 400px; /* Fixed height for scrolling */
+            overflow-y: auto;
+            /* Enable scrolling */
+            max-height: 400px;
+            /* Fixed height for scrolling */
             padding: 16px 20px;
         }
 
@@ -696,7 +707,8 @@
         .existing-videos-panel {
             display: none;
             flex-direction: column;
-            height: 600px; /* Fixed panel height */
+            height: 600px;
+            /* Fixed panel height */
             max-height: 80vh;
         }
 
@@ -734,15 +746,15 @@
             .existing-videos-panel {
                 height: 70vh;
             }
-            
+
             .existing-videos-content {
                 max-height: 300px;
             }
-            
+
             .footer-buttons {
                 flex-direction: column;
             }
-            
+
             .footer-buttons button {
                 width: 100%;
             }
@@ -898,12 +910,13 @@
 
             // Add XHRUpload plugin for chunk upload handling
             uppy.use(Uppy.XHRUpload, {
-                endpoint: '{{ route('hls.videos.upload') }}', // Your backend endpoint for receiving chunks
+                endpoint: '{{ config('hls-videos.uploader_access_url') }}/hls/videos/upload', // Your backend endpoint for receiving chunks
                 formData: true,
                 fieldName: 'file',
                 headers: {
                     'Accept': 'application/json',
-                    'X-CSRF-TOKEN': '{{ csrf_token() }}'
+                    'X-CSRF-TOKEN': '{{ csrf_token() }}',
+                    'X-tenant': '{{ HlsVideos\Services\VideoService::getSubDomain() }}',
                 },
                 // You can add custom options for parallelism and retries
                 parallelUploads: 5, // Limit to 5 parallel uploads
@@ -1019,46 +1032,46 @@
 
         function loadNextPageHls() {
             if (existingVideosState.pagination.isLoading || !existingVideosState.pagination.hasMore) return;
-            
+
             existingVideosState.pagination.isLoading = true;
             existingVideosState.pagination.currentPage++;
 
             // Update UI
             updateLoadMoreButton();
             showLoadingMoreHls();
-            
+
             const baseUrl = `/hls/folders/list?id=${existingVideosState.currentFolderId}`;
-            
+
             const apiUrl = `${baseUrl}&page=${existingVideosState.pagination.currentPage}`;
-            
+
             fetch(apiUrl, {
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Accept': 'application/json',
-                    'X-CSRF-TOKEN': '{{ csrf_token() }}'
-                }
-            })
-            .then((response) => {
-                return response.json();
-            })
-            .then((data) => {
-                if (data.success) {
-                    handleNextPageDataHls(data.data || data);
-                } else {
-                    throw new Error(data.message || "Failed to load next page");
-                }
-            })
-            .catch((error) => {
-                console.error('❌ API error:', error);
-                toastr.error("فشل تحميل المزيد من العناصر");
-                // Rollback page number on error
-                existingVideosState.pagination.currentPage--;
-            })
-            .finally(() => {
-                existingVideosState.pagination.isLoading = false;
-                hideLoadingMoreHls();
-                updateLoadMoreButton();
-            });
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json',
+                        'X-CSRF-TOKEN': '{{ csrf_token() }}'
+                    }
+                })
+                .then((response) => {
+                    return response.json();
+                })
+                .then((data) => {
+                    if (data.success) {
+                        handleNextPageDataHls(data.data || data);
+                    } else {
+                        throw new Error(data.message || "Failed to load next page");
+                    }
+                })
+                .catch((error) => {
+                    console.error('❌ API error:', error);
+                    toastr.error("فشل تحميل المزيد من العناصر");
+                    // Rollback page number on error
+                    existingVideosState.pagination.currentPage--;
+                })
+                .finally(() => {
+                    existingVideosState.pagination.isLoading = false;
+                    hideLoadingMoreHls();
+                    updateLoadMoreButton();
+                });
         }
 
         function handleNextPageDataHls(responseData) {
@@ -1070,18 +1083,21 @@
 
             // Merge new data with existing data
             existingVideosState.allVideos = [
-                ...existingVideosState.allVideos, 
+                ...existingVideosState.allVideos,
                 ...newVideos.filter(v => v.status === 'ready')
             ];
             existingVideosState.filteredVideos = existingVideosState.allVideos;
 
             // Update pagination info
-            const paginationInfo = responseData.videos?.pagination || responseData.videos?.meta || responseData.pagination || {};
-            existingVideosState.pagination.currentPage = paginationInfo.current_page || existingVideosState.pagination.currentPage;
+            const paginationInfo = responseData.videos?.pagination || responseData.videos?.meta || responseData
+                .pagination || {};
+            existingVideosState.pagination.currentPage = paginationInfo.current_page || existingVideosState.pagination
+                .currentPage;
             existingVideosState.pagination.lastPage = paginationInfo.last_page || existingVideosState.pagination.lastPage;
             existingVideosState.pagination.perPage = paginationInfo.per_page || existingVideosState.pagination.perPage;
             existingVideosState.pagination.total = paginationInfo.total || existingVideosState.pagination.total;
-            existingVideosState.pagination.hasMore = existingVideosState.pagination.currentPage < existingVideosState.pagination.lastPage;
+            existingVideosState.pagination.hasMore = existingVideosState.pagination.currentPage < existingVideosState
+                .pagination.lastPage;
 
             // Update UI
             displayExistingVideos();
@@ -1157,7 +1173,8 @@
                 showAllCheckbox.addEventListener('change', function() {
                     // Reset to initial folder when toggling
                     const folderIdInput = document.getElementById('current_folder_id');
-                    existingVideosState.currentFolderId = this.checked ? null : (folderIdInput ? folderIdInput.value : null);
+                    existingVideosState.currentFolderId = this.checked ? null : (folderIdInput ? folderIdInput
+                        .value : null);
                     existingVideosState.selectedVideo = null;
 
                     const confirmBtn = document.getElementById('confirm-select-video');
@@ -1257,7 +1274,7 @@
             // Use provided folder ID or current state folder ID
             var targetFolderId = folderId ?? existingVideosState.currentFolderId;
 
-            if(!folderId && existingVideosState.isSharedMode) {
+            if (!folderId && existingVideosState.isSharedMode) {
                 targetFolderId = null;
             }
             // Show loading state
@@ -1273,7 +1290,7 @@
 
             // Build API endpoint
             let apiUrl = targetFolderId ? `/hls/folders/list?id=${targetFolderId}` : '/hls/folders/list';
-            
+
             fetch(apiUrl, {
                     headers: {
                         'Content-Type': 'application/json',
@@ -1299,8 +1316,10 @@
                             videos = responseData.videos?.data || responseData.videos || [];
                             folders = responseData.folders || [];
                             if (existingVideosState.isSharedMode) {
-                                existingVideosState.breadcrumb = [
-                                    { id: null, title: 'الرئيسية' },
+                                existingVideosState.breadcrumb = [{
+                                        id: null,
+                                        title: 'الرئيسية'
+                                    },
                                     ...responseData.breadcrumb,
                                 ];
                             } else {
@@ -1309,7 +1328,7 @@
                             existingVideosState.currentFolderId = targetFolderId;
                         }
 
-                        if(!existingVideosState.currentFolderId) {
+                        if (!existingVideosState.currentFolderId) {
                             existingVideosState.currentFolderId = data.data.folder?.id;
                         }
 
@@ -1319,12 +1338,14 @@
                         existingVideosState.filteredFolders = existingVideosState.allFolders;
 
                         // Update pagination info from initial load
-                        const paginationInfo = responseData.videos?.pagination || responseData.videos?.meta || responseData.pagination || {};
+                        const paginationInfo = responseData.videos?.pagination || responseData.videos?.meta ||
+                            responseData.pagination || {};
                         existingVideosState.pagination.currentPage = paginationInfo.current_page || 1;
                         existingVideosState.pagination.lastPage = paginationInfo.last_page || 1;
                         existingVideosState.pagination.perPage = paginationInfo.per_page || 20;
                         existingVideosState.pagination.total = paginationInfo.total || 0;
-                        existingVideosState.pagination.hasMore = existingVideosState.pagination.currentPage < existingVideosState.pagination.lastPage;
+                        existingVideosState.pagination.hasMore = existingVideosState.pagination.currentPage <
+                            existingVideosState.pagination.lastPage;
 
                         displayExistingVideos();
                         updateExistingBreadcrumb();
@@ -1515,7 +1536,7 @@
             });
 
             content.innerHTML = html;
-            
+
             // Update load more button after rendering
             updateLoadMoreButton();
         }
@@ -1549,7 +1570,7 @@
         }
 
         function filterExistingVideos() {
-        
+
             const searchTerm = document.getElementById('existing-videos-search').value.toLowerCase();
 
             if (searchTerm) {
