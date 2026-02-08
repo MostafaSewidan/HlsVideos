@@ -13,6 +13,7 @@ Route::name('hls.videos.')
         Route::any('upload', [HlsVideoController::class, 'uploadVideo'])->name('upload');
     });
 
+
 Route::middleware($middleware)->group(function () {
 
     Route::name('hls.videos.')
