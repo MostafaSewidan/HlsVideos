@@ -111,7 +111,7 @@ class FfmpegService implements VideoQualityProcessorInterface
                     fclose($stream);
                 }
 
-                $uploadedVideosDisk->delete("temp-videos/".VideoService::getMediaPath()."{$this->video->id}");
+                $uploadedVideosDisk->deleteDirectory("temp-videos/".VideoService::getMediaPath()."{$this->video->id}");
             } else {
                 throw new \Exception("Source video file does not exist on uploaded_videos_disk: {$sourcePath}");
             }
