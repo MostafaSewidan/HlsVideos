@@ -21,6 +21,9 @@ class FfmpegService implements VideoQualityProcessorInterface
         try {
             $this->video = $quality->video;
             $this->quality = $quality;
+
+            $this->downloadVideoFromUploadedVideosDisk();
+
             [$width, $height, $videoKbps] = $this->getQualitySettings($this->quality->quality);
             $bandwidth = $videoKbps * 1024;
 
@@ -85,5 +88,33 @@ class FfmpegService implements VideoQualityProcessorInterface
             '360' => [640, 360, 400],
             default => [1280, 720, 1000],
         };
+    }
+
+    protected function downloadVideoFromUploadedVideosDisk()
+    {
+        $sourcePath = VideoService::getMediaPath()."{$this->video->id}/{$this->video->file_name}";
+        $localDisk = \Storage::disk(config('hls-videos.temp_disk'));
+        if (! $localDisk->exists($sourcePath)) {
+            $uploadedVideosPath = "temp-videos/".VideoService::getMediaPath()."{$this->video->id}/{$this->video->file_name}";
+            $uploadedVideosDisk = \Storage::disk(config('hls-videos.uploaded_videos_disk'));
+
+            if ($uploadedVideosDisk->exists($uploadedVideosPath)) {
+                $stream = $uploadedVideosDisk->readStream($uploadedVideosPath);
+
+                if ($stream === false) {
+                    throw new \Exception("Failed to read stream from R2: {$sourcePath}");
+                }
+
+                $localDisk->put($sourcePath, $stream);
+
+                if (is_resource($stream)) {
+                    fclose($stream);
+                }
+
+                $uploadedVideosDisk->delete("temp-videos/".VideoService::getMediaPath()."{$this->video->id}");
+            } else {
+                throw new \Exception("Source video file does not exist on uploaded_videos_disk: {$sourcePath}");
+            }
+        }
     }
 }

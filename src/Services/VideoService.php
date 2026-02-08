@@ -162,13 +162,21 @@ class VideoService
     public function receiveFromServer($request, $videoId)
     {
         $video = HlsVideo::findOrFail($videoId);
-        $file = $request->file('file');
-        // Store the uploaded file
-        $extension = $extension ?? $file->getClientOriginalExtension();
-        $fileName = "vd.$extension";
+        // $sourcePath = "temp-videos/".VideoService::getMediaPath()."{$video->id}/{$video->file_name}";
+        // $localDisk = \Storage::disk(config('hls-videos.temp_disk'));
 
-        $disk = Storage::disk(config('hls-videos.temp_disk'));
-        $disk->putFileAs((VideoService::getMediaPath()."$videoId"), $file, $fileName);
+        // if (! $localDisk->exists($sourcePath)) {
+        //     throw new \Exception("Video file not found at path: {$sourcePath}");
+        // }
+
+        // $s3Disk = \Storage::disk(config('hls-videos.uploaded_videos'));
+        // $s3Disk->put($sourcePath, $localDisk->readStream($sourcePath));
+
+        // if (is_resource($stream)) {
+        //     fclose($stream);
+        // }
+
+        // $localDisk->delete($sourcePath);
 
         $video->qualities()->delete();
         (new VideoService())->handleVideoQualities($video);

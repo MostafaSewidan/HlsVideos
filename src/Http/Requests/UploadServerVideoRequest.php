@@ -15,7 +15,6 @@ class UploadServerVideoRequest extends FormRequest
     {
 
         return [
-            'file' => 'required',
             'tenant_id' => 'required|exists:tenants,id',
         ];
     }
