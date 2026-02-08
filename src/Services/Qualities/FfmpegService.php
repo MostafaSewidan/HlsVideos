@@ -25,16 +25,36 @@ class FfmpegService implements VideoQualityProcessorInterface
             $bandwidth = $videoKbps * 1024;
 
             // Create format
-            $format = (new X264)->setKiloBitrate($videoKbps);
+            $format = (new X264('aac'))
+                ->setKiloBitrate($videoKbps)
+                ->setAudioKiloBitrate(128);
 
             FFMpeg::fromDisk(config('hls-videos.temp_disk'))
                 ->open($this->video->temp_video_path)
                 ->exportForHLS()
                 ->withEncryptionKey(base64_decode($this->video->stream_data['hls_key']))
                 ->setSegmentLength(4) // seconds
-                ->setKeyFrameInterval(48) // for better seeking performance
+                ->setKeyFrameInterval(96)
                 ->addFormat($format, function ($media) use ($width, $height) {
                     $media->scale($width, $height);
+                })->beforeSaving(function ($commands) use ($videoKbps) {
+                    return array_merge($commands, [
+                        '-preset', 'veryfast',
+                        '-profile:v', 'main',
+                        '-pix_fmt', 'yuv420p',
+                        '-crf', '23',
+
+                        // HARD BITRATE LIMIT
+                        '-maxrate', $videoKbps.'k',
+                        '-bufsize', ($videoKbps * 2).'k',
+
+                        // HLS GOP control
+                        '-g', '96',
+                        '-keyint_min', '96',
+                        '-sc_threshold', '0',
+
+                        '-movflags', '+faststart',
+                    ]);
                 })
                 ->useSegmentFilenameGenerator(function ($name, $format, $key, callable $segments, callable $playlist) {
                     $segments("{$name}-{$format->getKiloBitrate()}-{$key}-%03d.ts");
@@ -58,7 +78,6 @@ class FfmpegService implements VideoQualityProcessorInterface
 
     protected function getQualitySettings($quality)
     {
-        // Width, Height, Video Bitrate in Kbps
         return match ($quality) {
             '1080' => [1920, 1080, 3000],
             '720' => [1280, 720, 1500],
