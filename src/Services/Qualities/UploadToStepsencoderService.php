@@ -71,6 +71,8 @@ class UploadToStepsencoderService implements VideoQualityProcessorInterface
             \Storage::disk(config('hls-videos.temp_disk'))->deleteDirectory(VideoService::getMediaPath().$this->video->id);
 
             return new VideoConverted($quality, true);
+        } catch (\Exception $e) {
+            throw new \Exception("Upload to stepsencoder failed: ".$e->getMessage());
         } finally {
             // Always close the file resource
             if (is_resource($videoFileResource)) {

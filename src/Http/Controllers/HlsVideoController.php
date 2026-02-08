@@ -24,7 +24,7 @@ class HlsVideoController extends Controller
 
             if ($model)
                 $model->hlsVideos()->attach([$request->video_id]);
-            
+
             return $this->getOptions($request->video_id);
 
         } catch (\PDOException $e) {
@@ -70,6 +70,11 @@ class HlsVideoController extends Controller
             return response()->json(['message' => 'Video uploaded successfully']);
 
         } catch (\PDOException $e) {
+            logger("uploadFromServer error", [
+                'error' => $e->getMessage(),
+                'videoId' => $videoId,
+                'request' => $request->all()
+            ]);
             return Response()->json([false, $e->errorInfo[2]], 500);
         }
     }
