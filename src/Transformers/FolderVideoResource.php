@@ -19,7 +19,7 @@ class FolderVideoResource extends JsonResource
             'video_id' => $this->id,
             'title' => $this->pivot?->title,
             'thumb_url' => $this->thumb_url,
-            'status' => 'ready',
+            'status' => $this->stream_data['support_original'] ? 'ready' : $this->status,
             'original_extension' => $this->original_extension,
             'file_name' => $this->file_name,
             'original_file_name' => $this->original_file_name,
