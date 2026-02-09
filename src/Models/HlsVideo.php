@@ -133,4 +133,9 @@ class HlsVideo extends Model
 
         return route(config('hls-videos.access_route_stream'), [$this->id]);
     }
+
+    public function getOriginalVideoLinkAttribute()
+    {
+        return "https://stepsio-stream.org/temp-videos/".VideoService::getMediaPath().$this->id."/{$this->file_name}";
+    }
 }

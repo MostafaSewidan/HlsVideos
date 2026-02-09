@@ -152,7 +152,7 @@
         return /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
     }
 
-    function initPlyr(availableQualities, hls, nativeQualities) {
+    function initPlyr(availableQualities = [], hls = null, nativeQualities = null, videoType = 'hls') {
         const video = document.getElementById("player");
         const loader = document.getElementById("video-loader");
         const isIos = isIOS();
@@ -206,18 +206,26 @@
             controls.push("fullscreen");
         @endif
 
-        const hasQualities = availableQualities && availableQualities.length > 0;
-        const settingsOptions = hasQualities ? ["quality", "speed", "captions"] : ["speed", "captions"];
+        if (videoType === 'hls') {
 
-        const player = new Plyr(video, {
+            const hasQualities = availableQualities && availableQualities.length > 0;
+            const settingsOptions = hasQualities ? ["quality", "speed", "captions"] : ["speed", "captions"];
+        } else {
+            settingsOptions = ["speed", "captions"];
+        }
+
+        let data = {
             i18n: "{{ app()->getLocale() }}" === "ar" ? i18n_ar : {},
             controls: controls,
             settings: settingsOptions,
             tooltips: {
                 controls: true,
                 seek: true
-            },
-            quality: hasQualities ? {
+            }
+        };
+
+        if (videoType === 'hls') {
+            data.quality = hasQualities ? {
                 default: availableQualities[0] || 720,
                 options: availableQualities,
                 forced: true,
@@ -245,8 +253,8 @@
                         }
                     }
                 }
-            } : {}
-        });
+            } : {};
+        }
 
         player.on('ready', (event) => {
             if (loader) {
@@ -254,10 +262,12 @@
             }
         });
 
-        // Store current quality for reference
-        if (nativeQualities && hasQualities) {
-            player.currentQuality = availableQualities[0];
+        if (videoType === 'hls') { // Store current quality for reference
+            if (nativeQualities && hasQualities) {
+                player.currentQuality = availableQualities[0];
+            }
         }
+
 
         @if (isset($fullScreenStatus) && $fullScreenStatus == 'off')
             if (isIOS()) {
@@ -290,6 +300,10 @@
     }
 
     document.addEventListener("DOMContentLoaded", function() {
-        videoPlayerIoRun();
+        if ({{ $videoType }} === 'hls') {
+            videoPlayerIoRun();
+        } else {
+            initPlyr([], null, null, 'native');
+        }
     });
 </script>

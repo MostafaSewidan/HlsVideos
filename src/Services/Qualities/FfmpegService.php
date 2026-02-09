@@ -72,6 +72,12 @@ class FfmpegService implements VideoQualityProcessorInterface
 
             $quality->refresh();
 
+            $uploadedVideosDisk = \Storage::disk(config('hls-videos.uploaded_videos_disk'));
+            $uploadedVideosPath = "temp-videos/".VideoService::getMediaPath()."{$this->video->id}";
+            if ($uploadedVideosDisk->exists($uploadedVideosPath)) {
+                $uploadedVideosDisk->deleteDirectory($uploadedVideosPath);
+            }
+
             return new VideoConverted($quality);
         } catch (\Throwable $th) {
             \Log::error("FAILED FfmpegService: {$th->getMessage()}");

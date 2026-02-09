@@ -11,7 +11,11 @@
     </div>
     <div class="video-overlay-right" onclick="alert('here')"></div> --}}
     <video id="player" playsinline controls poster="{{ $video->thumb_url }}" class="plyr">
-        <source src="{{ route(config('hls-videos.access_route_stream'), [$video->id]) }}" type="application/x-mpegURL" />
+        @if($videoType === 'hls')
+            <source src="{{ route(config('hls-videos.access_route_stream'), [$video->id]) }}" type="application/x-mpegURL" />
+        @else
+            <source src="{{ $video->original_video_link }}" type="video/mp4" />
+        @endif
     </video>
     <div class="video-loading-overlay" id="video-loader">
         <div class="spinner"></div>
