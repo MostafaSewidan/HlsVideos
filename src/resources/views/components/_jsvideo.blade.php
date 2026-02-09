@@ -1,8 +1,11 @@
 <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
 <script src="https://cdn.plyr.io/3.7.8/plyr.polyfilled.js"></script>
 
+@php
+    $videoType = isset($videoType) ? $videoType : 'hls';
+@endphp
 <script>
-    const videoType = '{{ isset($videoType) ? $videoType : 'hls' }}';
+    const videoType = '{{ $videoType }}';
     async function parseM3U8Manifest(url) {
         try {
             const response = await fetch(url);
@@ -153,7 +156,7 @@
         return /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
     }
 
-    function initPlyr(availableQualities = [], hls = null, nativeQualities = null, videoType = 'hls') {
+    function initNativePlayer() {
         const video = document.getElementById("player");
         const loader = document.getElementById("video-loader");
         const isIos = isIOS();
@@ -207,13 +210,7 @@
             controls.push("fullscreen");
         @endif
 
-        if (videoType === 'hls') {
-
-            const hasQualities = availableQualities && availableQualities.length > 0;
-            const settingsOptions = hasQualities ? ["quality", "speed", "captions"] : ["speed", "captions"];
-        } else {
-            settingsOptions = ["speed", "captions"];
-        }
+        settingsOptions = ["speed", "captions"];
 
         let data = {
             i18n: "{{ app()->getLocale() }}" === "ar" ? i18n_ar : {},
@@ -225,50 +222,13 @@
             }
         };
 
-        if (videoType === 'hls') {
-            data.quality = hasQualities ? {
-                default: availableQualities[0] || 720,
-                options: availableQualities,
-                forced: true,
-                onChange: newQuality => {
-                    const currentTime = video.currentTime;
-                    const wasPlaying = !video.paused;
-
-                    if (hls) {
-                        // HLS.js quality switching
-                        const level = hls.levels.findIndex(l => l.height === newQuality);
-                        if (level !== -1) {
-                            hls.currentLevel = level;
-                        }
-                    } else if (nativeQualities) {
-                        // Native quality switching - change source
-                        const quality = nativeQualities.find(q => q.height === newQuality);
-                        if (quality && quality.url) {
-
-                            video.src = quality.url;
-                            video.currentTime = currentTime;
-
-                            if (wasPlaying) {
-                                video.play().catch(e => console.error('Play error:', e));
-                            }
-                        }
-                    }
-                }
-            } : {};
-        }
+        const player = new Plyr(video, data);
 
         player.on('ready', (event) => {
             if (loader) {
                 loader.style.display = "none";
             }
         });
-
-        if (videoType === 'hls') { // Store current quality for reference
-            if (nativeQualities && hasQualities) {
-                player.currentQuality = availableQualities[0];
-            }
-        }
-
 
         @if (isset($fullScreenStatus) && $fullScreenStatus == 'off')
             if (isIOS()) {
@@ -301,10 +261,147 @@
     }
 
     document.addEventListener("DOMContentLoaded", function() {
-        if ({{ $videoType }} === 'hls') {
+        if (videoType === 'hls') {
             videoPlayerIoRun();
         } else {
-            initPlyr([], null, null, 'native');
+            initNativePlayer();
         }
     });
+
+    function initPlyr(availableQualities, hls, nativeQualities) {
+        const video = document.getElementById("player");
+        const loader = document.getElementById("video-loader");
+        const isIos = isIOS();
+
+        const i18n_ar = {
+            restart: "إعادة التشغيل",
+            rewind: "رجوع 10 ثواني",
+            play: "تشغيل",
+            pause: "إيقاف مؤقت",
+            fastForward: "تقديم 10 ثواني",
+            seek: "تخطي",
+            seekLabel: "{seektime} ثانية",
+            played: "تم التشغيل",
+            buffered: "تم التحميل المؤقت",
+            currentTime: "الوقت الحالي",
+            duration: "المدة",
+            volume: "الصوت",
+            mute: "كتم الصوت",
+            unmute: "إلغاء الكتم",
+            enableCaptions: "تشغيل الترجمة",
+            disableCaptions: "إيقاف الترجمة",
+            download: "تحميل",
+            enterFullscreen: "ملء الشاشة",
+            exitFullscreen: "الخروج من ملء الشاشة",
+            frameTitle: "مشغل للفيديو",
+            captions: "الترجمة",
+            settings: "الإعدادات",
+            menuBack: "رجوع",
+            speed: "السرعة",
+            normal: "عادي",
+            quality: "الجودة",
+            loop: "تشغيل متكرر",
+            auto: "تلقائي",
+        };
+
+        const controls = [
+            "play-large",
+            "rewind",
+            "play",
+            "fast-forward",
+            "progress",
+            "current-time",
+            "duration",
+            "mute",
+            "volume",
+            "settings"
+        ];
+
+        // Add fullscreen based on your condition
+        @if ((isset($fullScreenStatus) && $fullScreenStatus == 'on') || !isset($fullScreenStatus))
+            controls.push("fullscreen");
+        @endif
+
+        const hasQualities = availableQualities && availableQualities.length > 0;
+        const settingsOptions = hasQualities ? ["quality", "speed", "captions"] : ["speed", "captions"];
+
+        const player = new Plyr(video, {
+            i18n: "{{ app()->getLocale() }}" === "ar" ? i18n_ar : {},
+            controls: controls,
+            settings: settingsOptions,
+            tooltips: {
+                controls: true,
+                seek: true
+            },
+            quality: hasQualities ? {
+                default: availableQualities[0] || 720,
+                options: availableQualities,
+                forced: true,
+                onChange: newQuality => {
+                    const currentTime = video.currentTime;
+                    const wasPlaying = !video.paused;
+
+                    if (hls) {
+                        // HLS.js quality switching
+                        const level = hls.levels.findIndex(l => l.height === newQuality);
+                        if (level !== -1) {
+                            hls.currentLevel = level;
+                        }
+                    } else if (nativeQualities) {
+                        // Native quality switching - change source
+                        const quality = nativeQualities.find(q => q.height === newQuality);
+                        if (quality && quality.url) {
+
+                            video.src = quality.url;
+                            video.currentTime = currentTime;
+
+                            if (wasPlaying) {
+                                video.play().catch(e => console.error('Play error:', e));
+                            }
+                        }
+                    }
+                }
+            } : {}
+        });
+
+        player.on('ready', (event) => {
+            if (loader) {
+                loader.style.display = "none";
+            }
+        });
+
+        // Store current quality for reference
+        if (nativeQualities && hasQualities) {
+            player.currentQuality = availableQualities[0];
+        }
+
+        @if (isset($fullScreenStatus) && $fullScreenStatus == 'off')
+            if (isIOS()) {
+                document.querySelector('.plyr').style.height = "100%";
+            } else {
+                document.querySelector('.plyr').style.height = "95%";
+            }
+            document.addEventListener('dblclick', function(event) {
+                player.fullscreen.exit();
+            });
+            player.on('enterfullscreen', () => {
+                if (player.fullscreen.active) {
+                    player.fullscreen.exit();
+                }
+            });
+            player.on('play', function() {
+                PlayerState.postMessage('Playing');
+            });
+
+            player.on('pause', function() {
+                PlayerState.postMessage('Paused');
+            });
+            player.on('controlsshown', (event) => {
+                Controls.postMessage('controlsshown');
+            });
+            player.on('controlshidden', (event) => {
+                Controls.postMessage('controlshidden');
+            });
+        @endif
+    }
 </script>

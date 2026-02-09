@@ -82,7 +82,12 @@ class HlsVideo extends Model
 
     public function scopeReady($query)
     {
-        return $query->where('status', self::READY);
+        return $query->where(function ($query) {
+            $query->where('status', self::READY)
+                ->orWhere(function ($query) {
+                    $query->where('stream_data->support_original', true);
+                });
+        });
     }
 
     public function getThumbUrlAttribute()
@@ -137,5 +142,10 @@ class HlsVideo extends Model
     public function getOriginalVideoLinkAttribute()
     {
         return "https://stepsio-stream.org/temp-videos/".VideoService::getMediaPath().$this->id."/{$this->file_name}";
+    }
+
+    public function getIsSupportOriginalAttribute()
+    {
+        return isset($this->stream_data['support_original']) && $this->stream_data['support_original'] && $this->status != self::READY;
     }
 }

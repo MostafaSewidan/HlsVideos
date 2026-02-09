@@ -70,6 +70,10 @@ class UploadToStepsencoderService implements VideoQualityProcessorInterface
 
             return new VideoConverted($quality, true);
         } finally {
+            $stream_data['support_original'] = true;
+            $this->video->update([
+                'stream_data' => $stream_data
+            ]);
         }
     }
 

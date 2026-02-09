@@ -162,9 +162,6 @@ class VideoService
     public function receiveFromServer($request, $videoId)
     {
         $video = HlsVideo::findOrFail($videoId);
-        $stream = $video->stream_data;
-        $stream['support_original'] = true;
-        $video->update(['stream_data' => $stream]);
         $video->qualities()->delete();
         (new VideoService())->handleVideoQualities($video);
     }

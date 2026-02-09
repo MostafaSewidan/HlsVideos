@@ -5,8 +5,11 @@ use Illuminate\View\Component;
 
 class Video extends Component
 {
-    public function __construct(public $video, public $fullScreenStatus = 'on', public $videoType = 'hls')
+    public $videoType = 'hls';
+
+    public function __construct(public $video, public $fullScreenStatus = 'on')
     {
+        $this->videoType = $video->is_support_original ? 'direct' : 'hls';
     }
 
     public function render()
