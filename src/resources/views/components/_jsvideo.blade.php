@@ -2,7 +2,7 @@
 <script src="https://cdn.plyr.io/3.7.8/plyr.polyfilled.js"></script>
 
 <script>
-    videoType = '{{ $videoType }}';
+    videoType = '{{ isset($videoType) ? $videoType : 'hls' }}';
     async function parseM3U8Manifest(url) {
         try {
             const response = await fetch(url);
