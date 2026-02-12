@@ -379,7 +379,7 @@ class VideoService
         $content = Storage::disk(config('hls-videos.stream_disk'))->get($path);
         $oldTsFilesUrl = route(config('hls-videos.access_route_stream'), [$video->id, $firstQ->quality]);
         $oldTsFilesUrl = route(config('hls-videos.access_route_stream'), [$video->id, $firstQ->quality]);
-        $newTsFilesUrl = "$localPath/$video->id";
+        $newTsFilesUrl = "$localPath/.$video->id";
         $content = str_replace($oldTsFilesUrl, $newTsFilesUrl, $content);
         $secrtUri = route(config('hls-videos.access_route_stream'), [$video->id, $firstQ->quality, "secret.key"]);
         $content = str_replace('secret.key', $secrtUri, $content);
