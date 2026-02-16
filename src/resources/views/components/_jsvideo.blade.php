@@ -99,7 +99,20 @@
 
         // Try HLS.js first (works in most WebViews)
         if (Hls.isSupported()) {
-            const hls = new Hls();
+            @if (auth('admin')->check())
+                const hls = new Hls();
+            @else
+                const hls = new Hls({
+                    fetchSetup: function(context, initParams) {
+                        initParams.headers = {
+                            ...initParams.headers,
+                            Authorization: "{{ isset($authToken) ? $authToken : null }}",
+                            Password: "{{ isset($password) ? $password : null }}",
+                        };
+                    }
+                });
+            @endif
+
 
             hls.loadSource(videoSource);
             hls.attachMedia(video);

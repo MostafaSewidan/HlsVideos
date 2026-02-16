@@ -7,7 +7,7 @@ class Video extends Component
 {
     public $videoType = 'hls';
 
-    public function __construct(public $video, public $fullScreenStatus = 'on')
+    public function __construct(public $video, public $fullScreenStatus = 'on', public $password = null, public $authToken = null)
     {
         $this->videoType = $video->is_support_original ? 'direct' : 'hls';
     }

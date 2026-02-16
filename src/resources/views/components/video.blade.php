@@ -3,6 +3,8 @@
 @endpush
 @php
     $videoType = isset($videoType) ? $videoType : 'hls';
+    $password = isset($password) ? $password : null;
+    $authToken = isset($authToken) ? $authToken : null;
 @endphp
 <div class="video-container">
     {{-- <div class="video-overlay-left" onclick="alert('here')">
@@ -26,5 +28,5 @@
     </div>
 </div>
 @push('hls-scripts')
-    @include('hls-videos::components._jsvideo', ['videoType' => $videoType])
+    @include('hls-videos::components._jsvideo', ['videoType' => $videoType, 'password' => $password, 'authToken' => $authToken])
 @endpush
