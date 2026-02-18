@@ -116,7 +116,7 @@
                         @if (isset($version))
                             xhr.setRequestHeader("Version", "{{ isset($version) ? $version : null }}");
                         @endif
-                        xhr.setRequestHeader("accept", "application/json");
+                        xhr.setRequestHeader("Accept", "application/json");
                     }
                 });
             @endif
