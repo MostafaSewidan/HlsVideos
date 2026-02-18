@@ -109,6 +109,7 @@
                             "{{ isset($authToken) ? $authToken : null }}");
                         xhr.setRequestHeader("Password", "{{ isset($password) ? $password : null }}");
                         xhr.setRequestHeader("Version", "{{ isset($version) ? $version : null }}");
+                        xhr.setRequestHeader("accept", "application/json");
                     }
                 });
             @endif
