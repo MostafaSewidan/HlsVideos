@@ -1,5 +1,5 @@
 <?php
-namespace  HlsVideos\Jobs;
+namespace HlsVideos\Jobs;
 
 use HlsVideos\DTOS\VideoConverted;
 use Illuminate\Bus\Queueable;
@@ -7,33 +7,40 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
-use  HlsVideos\Factories\VideoQualityProcessorFactory;
-use  HlsVideos\Models\HlsVideo;
-use  HlsVideos\Models\HlsVideoQuality;
-
+use HlsVideos\Factories\VideoQualityProcessorFactory;
+use HlsVideos\Models\HlsVideo;
+use HlsVideos\Models\HlsVideoQuality;
+use App\Models\Tenant;
 
 class ConvertQualityJob implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
 
-    public function __construct(protected HlsVideoQuality $hlsVideoQuality,protected $tenant)
+    public function __construct(protected HlsVideoQuality $hlsVideoQuality, protected Tenant $tenant)
     {
     }
 
     public function handle()
     {
         try {
+            logger("ConvertQualityJob started", [
+                'hlsVideoQuality' => $this->hlsVideoQuality,
+                'tenant' => $this->tenant,
+            ]);
             $this->tenant->makeCurrent();
+            logger("Tenant made current", [
+                'tenant' => $this->tenant,
+            ]);
             $quality = $this->hlsVideoQuality->quality;
             $video = $this->hlsVideoQuality->video;
 
-            if($video->status != HlsVideo::READY)
+            if ($video->status != HlsVideo::READY)
                 $video->update(['status' => HlsVideo::PROCESSING]);
 
             $service = VideoQualityProcessorFactory::make($quality);
 
-            switch($this->hlsVideoQuality->status){
+            switch ($this->hlsVideoQuality->status) {
                 case HlsVideoQuality::UPLOADING:
                     new VideoConverted($this->hlsVideoQuality);
                     break;
@@ -41,7 +48,7 @@ class ConvertQualityJob implements ShouldQueue
                     break;
                 default:
                     $this->hlsVideoQuality->updateStatusTo(HlsVideoQuality::CONVERTING);
-                    $service->convertVideo($video->temp_video,$this->hlsVideoQuality);
+                    $service->convertVideo($video->temp_video, $this->hlsVideoQuality);
                     break;
             }
         } catch (\Throwable $e) {

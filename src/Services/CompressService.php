@@ -91,7 +91,7 @@ class CompressService
             }
 
             @unlink($tempZipPath);
-
+            $video->update(['stream_data' => ['compress_video_status' => true, ...$video->stream_data]]);
             return true;
         } catch (\Exception $e) {
             if (isset($tempZipPath) && file_exists($tempZipPath)) {

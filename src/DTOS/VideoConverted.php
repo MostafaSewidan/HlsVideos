@@ -40,21 +40,25 @@ class VideoConverted
 
    private function updateVideoUploaded()
    {
-      $this->video->update(['status' => HlsVideo::READY]);
-      Event::dispatch(new VideoConvertedEvent($this->video, app('currentTenant')));
       $upcommingQuality = VideoService::getUpcommingQuality($this->video);
 
       if ($upcommingQuality) {
 
+         if (! isset($this->video->stream_data['compress_video_status'])) {
+            CompressService::compressAndUploadVideo($this->video);
+         }
          VideoService::createQualityFromConfig($this->video, $upcommingQuality);
       } else {
 
          if (! $this->video->qualities()->notReady()->count()) {
 
-            CompressService::compressAndUploadVideo($this->video);
             Storage::disk(config('hls-videos.temp_disk'))->deleteDirectory(VideoService::getMediaPath().$this->video->id);
          }
       }
+
+      $this->video->update(['status' => HlsVideo::READY]);
+      $this->video->refresh();
+      Event::dispatch(new VideoConvertedEvent($this->video, app('currentTenant')));
    }
 
    private function handlingTheQualityPlaylist()

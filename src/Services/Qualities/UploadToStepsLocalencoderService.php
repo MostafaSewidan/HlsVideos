@@ -8,7 +8,7 @@ use HlsVideos\Models\HlsVideoQuality;
 use HlsVideos\Services\Contracts\VideoQualityProcessorInterface;
 use HlsVideos\Services\VideoService;
 
-class UploadToStepsLocalencoderServic implements VideoQualityProcessorInterface
+class UploadToStepsLocalencoderService implements VideoQualityProcessorInterface
 {
     protected $quality;
     protected $video;
@@ -25,7 +25,7 @@ class UploadToStepsLocalencoderServic implements VideoQualityProcessorInterface
 
     public function convertVideo($videoFile, HlsVideoQuality $quality): VideoConverted
     {
-        $nodeUrl = config('hls-videos.local_server_url');
+        $nodeUrl = $this->getTheBestNode();
         $this->video = $quality->video;
         $stream_data = $this->video->stream_data;
         $stream_data['incode_url'] = $nodeUrl;
