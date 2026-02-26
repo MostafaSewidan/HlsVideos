@@ -27,22 +27,32 @@ class FfmpegLocalStepsEncoderService implements VideoQualityProcessorInterface
             [$width, $height, $videoKbps] = $this->getQualitySettings($this->quality->quality);
             $bandwidth = $videoKbps * 1024;
 
-            // Create format
-            $format = (new X264('aac'))
-                ->setKiloBitrate($videoKbps)
+            // Create format with NVENC encoder
+            $format = (new X264())
+                ->setAudioCodec('aac')
                 ->setAudioKiloBitrate(128)
+                ->setKiloBitrate($videoKbps)
                 ->setAdditionalParameters([
                     '-c:v', 'h264_nvenc',
-                    '-preset', 'p4',          // NVENC preset (not veryfast)
+                    '-preset', 'p4',
                     '-tune', 'hq',
-                    '-profile:v', 'main',
-                    '-pix_fmt', 'yuv420p',
-                    '-rc', 'vbr',         // NVENC rate control
+                    '-rc', 'vbr',
+                    '-b:v', $videoKbps.'k',
                     '-maxrate', $videoKbps.'k',
                     '-bufsize', ($videoKbps * 2).'k',
+                    '-profile:v', 'main',
+                    '-pix_fmt', 'yuv420p',
                     '-g', '96',
                     '-keyint_min', '96',
                     '-sc_threshold', '0',
+                    '-movflags', '+faststart',
+
+                    // Additional NVENC specific optimizations
+                    '-rc-lookahead', '32',
+                    '-spatial-aq', '1',
+                    '-temporal-aq', '1',
+                    '-no-scenecut', '1',
+                    '-b_adapt', '0',
                 ]);
 
             FFMpeg::fromDisk(config('hls-videos.temp_disk'))
@@ -53,6 +63,24 @@ class FfmpegLocalStepsEncoderService implements VideoQualityProcessorInterface
                 ->setKeyFrameInterval(96)
                 ->addFormat($format, function ($media) use ($width, $height) {
                     $media->scale($width, $height);
+                })->beforeSaving(function ($commands) use ($videoKbps) {
+                    return array_merge($commands, [
+                        '-preset', 'veryfast',
+                        '-profile:v', 'main',
+                        '-pix_fmt', 'yuv420p',
+                        '-crf', '23',
+
+                        // HARD BITRATE LIMIT
+                        '-maxrate', $videoKbps.'k',
+                        '-bufsize', ($videoKbps * 2).'k',
+
+                        // HLS GOP control
+                        '-g', '96',
+                        '-keyint_min', '96',
+                        '-sc_threshold', '0',
+
+                        '-movflags', '+faststart',
+                    ]);
                 })
                 ->useSegmentFilenameGenerator(function ($name, $format, $key, callable $segments, callable $playlist) {
                     $segments("{$name}-{$format->getKiloBitrate()}-{$key}-%03d.ts");
@@ -75,7 +103,7 @@ class FfmpegLocalStepsEncoderService implements VideoQualityProcessorInterface
 
             return new VideoConverted($quality);
         } catch (\Throwable $th) {
-            throw $th;
+            \Log::error("FAILED FfmpegService: {$th->getMessage()}");
             return new VideoConverted($quality);
         }
     }
