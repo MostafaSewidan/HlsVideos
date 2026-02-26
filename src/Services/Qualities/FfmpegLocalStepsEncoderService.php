@@ -27,13 +27,14 @@ class FfmpegLocalStepsEncoderService implements VideoQualityProcessorInterface
             [$width, $height, $videoKbps] = $this->getQualitySettings($this->quality->quality);
             $bandwidth = $videoKbps * 1024;
 
+            // Create format with NVENC
             $format = (new X264())
                 ->setAudioCodec('aac')
                 ->setAudioKiloBitrate(128)
                 ->setKiloBitrate($videoKbps)
                 ->setAdditionalParameters([
                     '-c:v', 'h264_nvenc',
-                    '-preset', 'p4',
+                    '-preset', 'p4',                    // NVENC preset
                     '-tune', 'hq',
                     '-rc', 'vbr',
                     '-b:v', $videoKbps.'k',
@@ -46,12 +47,14 @@ class FfmpegLocalStepsEncoderService implements VideoQualityProcessorInterface
                     '-sc_threshold', '0',
                     '-movflags', '+faststart',
 
-                    // Additional NVENC specific optimizations
+                    // NVENC optimizations for HLS
                     '-rc-lookahead', '32',
-                    '-spatial-aq', '1',
-                    '-temporal-aq', '1',
-                    '-no-scenecut', '1',
-                    '-b_adapt', '0',
+                    '-spatial-aq', '1',                  // Spatial adaptive quantization
+                    '-temporal-aq', '1',                  // Temporal adaptive quantization
+                    '-no-scenecut', '1',                  // Disable scenecut for consistent GOP
+                    '-b_adapt', '0',                       // Disable B-frame adaptation
+                    '-strict_gop', '1',                     // Strict GOP alignment for HLS
+                    '-forced-idr', '1',                      // Force IDR frames at GOP boundaries
                 ]);
 
             FFMpeg::fromDisk(config('hls-videos.temp_disk'))
@@ -62,6 +65,10 @@ class FfmpegLocalStepsEncoderService implements VideoQualityProcessorInterface
                 ->setKeyFrameInterval(96)
                 ->addFormat($format, function ($media) use ($width, $height) {
                     $media->scale($width, $height);
+                })
+                ->beforeSaving(function ($commands) {
+                    // Remove any duplicate parameters that might conflict
+                    return $commands;
                 })
                 ->useSegmentFilenameGenerator(function ($name, $format, $key, callable $segments, callable $playlist) {
                     $segments("{$name}-{$format->getKiloBitrate()}-{$key}-%03d.ts");
