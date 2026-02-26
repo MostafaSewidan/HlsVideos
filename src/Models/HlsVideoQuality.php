@@ -49,4 +49,9 @@ class HlsVideoQuality extends Model
 
         return $this->update(['status' => $status]);
     }
+
+    public function scopePending($q)
+    {
+        return $q->where('status', 'pending');
+    }
 }
