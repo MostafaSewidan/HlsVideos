@@ -5,10 +5,9 @@ namespace HlsVideos\Services\Qualities;
 use HlsVideos\DTOS\VideoConverted;
 use HlsVideos\Models\HlsVideoQuality;
 use HlsVideos\Services\Contracts\VideoQualityProcessorInterface;
-use HlsVideos\Services\Formats\H264Nvenc;
-use HlsVideos\Services\VideoService;
 use FFMpeg;
-
+use FFMpeg\Format\Video\X264;
+use HlsVideos\Services\VideoService;
 
 class FfmpegLocalStepsEncoderService implements VideoQualityProcessorInterface
 {
@@ -28,34 +27,32 @@ class FfmpegLocalStepsEncoderService implements VideoQualityProcessorInterface
             [$width, $height, $videoKbps] = $this->getQualitySettings($this->quality->quality);
             $bandwidth = $videoKbps * 1024;
 
-            $format = (new H264Nvenc('aac'))
+            // Create format
+            $format = (new X264('aac'))
                 ->setKiloBitrate($videoKbps)
-                ->setAudioKiloBitrate(128);
+                ->setAudioKiloBitrate(128)
+                ->setAdditionalParameters([
+                    '-preset', 'veryfast',
+                    '-profile:v', 'main',
+                    '-pix_fmt', 'yuv420p',
+                    '-crf', '23',
+                    '-maxrate', $videoKbps.'k',
+                    '-bufsize', ($videoKbps * 2).'k',
+                    '-g', '96',
+                    '-keyint_min', '96',
+                    '-sc_threshold', '0',
+                    '-movflags', '+faststart',
+                ]);
 
             FFMpeg::fromDisk(config('hls-videos.temp_disk'))
                 ->open($this->video->temp_video_path)
+                ->addFilter(['-hwaccel', 'cuda'])
                 ->exportForHLS()
                 ->withEncryptionKey(base64_decode($this->video->stream_data['hls_key']))
                 ->setSegmentLength(4) // seconds
                 ->setKeyFrameInterval(96)
                 ->addFormat($format, function ($media) use ($width, $height) {
                     $media->scale($width, $height);
-                })->beforeSaving(function ($commands) use ($videoKbps) {
-
-                    return array_merge($commands, [
-                        '-preset', 'p4',           // NVENC preset (p1=fastest, p7=slowest)
-                        '-tune', 'hq',
-                        '-profile:v', 'main',
-                        '-pix_fmt', 'yuv420p',
-                        '-rc', 'vbr',              // NVENC rate control (replaces -crf)
-                        '-cq', '23',               // Quality target (NVENC equivalent of crf)
-                        '-maxrate', $videoKbps.'k',
-                        '-bufsize', ($videoKbps * 2).'k',
-                        '-g', '96',
-                        '-keyint_min', '96',
-                        '-sc_threshold', '0',
-                        '-movflags', '+faststart',
-                    ]);
                 })
                 ->useSegmentFilenameGenerator(function ($name, $format, $key, callable $segments, callable $playlist) {
                     $segments("{$name}-{$format->getKiloBitrate()}-{$key}-%03d.ts");
