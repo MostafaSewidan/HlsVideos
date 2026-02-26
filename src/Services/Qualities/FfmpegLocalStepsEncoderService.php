@@ -32,10 +32,15 @@ class FfmpegLocalStepsEncoderService implements VideoQualityProcessorInterface
                 ->setKiloBitrate($videoKbps)
                 ->setAudioKiloBitrate(128);
 
-            FFMpeg::fromDisk(config('hls-videos.temp_disk'))
+            $transcode = FFMpeg::fromDisk(config('hls-videos.temp_disk'))
                 ->open($this->video->temp_video_path)
-                ->exportForHLS()
-                ->withEncryptionKey(base64_decode($this->video->stream_data['hls_key']))
+                ->exportForHLS();
+
+            if (isset($this->video->stream_data['hls_key'])) {
+                $transcode->withEncryptionKey(base64_decode($this->video->stream_data['hls_key']));
+            }
+
+            $transcode
                 ->setSegmentLength(4) // seconds
                 ->setKeyFrameInterval(96)
                 ->addFormat($format, function ($media) use ($width, $height) {
