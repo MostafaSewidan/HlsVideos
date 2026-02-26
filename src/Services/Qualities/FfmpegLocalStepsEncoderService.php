@@ -22,13 +22,11 @@ class FfmpegLocalStepsEncoderService implements VideoQualityProcessorInterface
             $this->video = $quality->video;
             $this->quality = $quality;
 
-
             $this->downloadVideoFromUploadedVideosDisk();
 
             [$width, $height, $videoKbps] = $this->getQualitySettings($this->quality->quality);
             $bandwidth = $videoKbps * 1024;
 
-            // Create format with NVENC encoder
             $format = (new X264())
                 ->setAudioCodec('aac')
                 ->setAudioKiloBitrate(128)
@@ -64,24 +62,6 @@ class FfmpegLocalStepsEncoderService implements VideoQualityProcessorInterface
                 ->setKeyFrameInterval(96)
                 ->addFormat($format, function ($media) use ($width, $height) {
                     $media->scale($width, $height);
-                })->beforeSaving(function ($commands) use ($videoKbps) {
-                    return array_merge($commands, [
-                        '-preset', 'veryfast',
-                        '-profile:v', 'main',
-                        '-pix_fmt', 'yuv420p',
-                        '-crf', '23',
-
-                        // HARD BITRATE LIMIT
-                        '-maxrate', $videoKbps.'k',
-                        '-bufsize', ($videoKbps * 2).'k',
-
-                        // HLS GOP control
-                        '-g', '96',
-                        '-keyint_min', '96',
-                        '-sc_threshold', '0',
-
-                        '-movflags', '+faststart',
-                    ]);
                 })
                 ->useSegmentFilenameGenerator(function ($name, $format, $key, callable $segments, callable $playlist) {
                     $segments("{$name}-{$format->getKiloBitrate()}-{$key}-%03d.ts");
