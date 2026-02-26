@@ -10,14 +10,13 @@ use Illuminate\Queue\SerializesModels;
 use HlsVideos\Factories\VideoQualityProcessorFactory;
 use HlsVideos\Models\HlsVideo;
 use HlsVideos\Models\HlsVideoQuality;
-use App\Models\Tenant;
 
 class ConvertQualityJob implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
 
-    public function __construct(protected HlsVideoQuality $hlsVideoQuality, protected Tenant $tenant)
+    public function __construct(protected HlsVideoQuality $hlsVideoQuality, protected $tenant)
     {
     }
 
