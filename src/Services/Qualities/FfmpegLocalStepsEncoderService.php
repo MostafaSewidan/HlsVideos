@@ -32,21 +32,21 @@ class FfmpegLocalStepsEncoderService implements VideoQualityProcessorInterface
                 ->setKiloBitrate($videoKbps)
                 ->setAudioKiloBitrate(128)
                 ->setAdditionalParameters([
-                    '-preset', 'veryfast',
+                    '-c:v', 'h264_nvenc',
+                    '-preset', 'p4',          // NVENC preset (not veryfast)
+                    '-tune', 'hq',
                     '-profile:v', 'main',
                     '-pix_fmt', 'yuv420p',
-                    '-crf', '23',
+                    '-rc', 'vbr',         // NVENC rate control
                     '-maxrate', $videoKbps.'k',
                     '-bufsize', ($videoKbps * 2).'k',
                     '-g', '96',
                     '-keyint_min', '96',
                     '-sc_threshold', '0',
-                    '-movflags', '+faststart',
                 ]);
 
             FFMpeg::fromDisk(config('hls-videos.temp_disk'))
                 ->open($this->video->temp_video_path)
-                ->addFilter(['-hwaccel', 'cuda'])
                 ->exportForHLS()
                 ->withEncryptionKey(base64_decode($this->video->stream_data['hls_key']))
                 ->setSegmentLength(4) // seconds
