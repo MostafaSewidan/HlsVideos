@@ -53,6 +53,7 @@ class VideoConverted
          if (! $this->video->qualities()->notReady()->count()) {
 
             Storage::disk(config('hls-videos.temp_disk'))->deleteDirectory(VideoService::getMediaPath().$this->video->id);
+            Storage::disk(config('hls-videos.uploaded_videos_disk'))->deleteDirectory("temp-videos/".VideoService::getMediaPath()."{$this->video->id}");
          }
       }
 
