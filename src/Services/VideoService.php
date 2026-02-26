@@ -3,6 +3,7 @@
 namespace HlsVideos\Services;
 
 use HlsVideos\Models\HlsVideo;
+use HlsVideos\Models\HlsVideoQuality;
 use FFMpeg;
 use HlsVideos\Models\HlsFolder;
 use Pion\Laravel\ChunkUpload\Handler\HandlerFactory;
@@ -230,7 +231,8 @@ class VideoService
 
     static function createQualityFromConfig($video, $configQuality)
     {
-        $video->qualities()->create([
+        HlsVideoQuality::create([
+            'hls_video_id' => $video->id,
             'quality' => $configQuality['quality'],
             'convert_service' => $configQuality['convert_service'],
         ]);

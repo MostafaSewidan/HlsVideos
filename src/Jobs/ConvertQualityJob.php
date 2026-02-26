@@ -23,14 +23,9 @@ class ConvertQualityJob implements ShouldQueue
     public function handle()
     {
         try {
-            logger("ConvertQualityJob started", [
-                'hlsVideoQuality' => $this->hlsVideoQuality,
-                'tenant' => $this->tenant,
-            ]);
+
             $this->tenant->makeCurrent();
-            logger("Tenant made current", [
-                'tenant' => $this->tenant,
-            ]);
+
             $quality = $this->hlsVideoQuality->quality;
             $video = $this->hlsVideoQuality->video;
 
