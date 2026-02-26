@@ -5,9 +5,10 @@ namespace HlsVideos\Services\Qualities;
 use HlsVideos\DTOS\VideoConverted;
 use HlsVideos\Models\HlsVideoQuality;
 use HlsVideos\Services\Contracts\VideoQualityProcessorInterface;
-use FFMpeg;
-use FFMpeg\Format\Video\X264;
+use HlsVideos\Services\Formats\H264Nvenc;
 use HlsVideos\Services\VideoService;
+use FFMpeg;
+
 
 class FfmpegLocalStepsEncoderService implements VideoQualityProcessorInterface
 {
@@ -27,8 +28,7 @@ class FfmpegLocalStepsEncoderService implements VideoQualityProcessorInterface
             [$width, $height, $videoKbps] = $this->getQualitySettings($this->quality->quality);
             $bandwidth = $videoKbps * 1024;
 
-            // Create format
-            $format = (new X264('aac'))
+            $format = (new H264Nvenc('aac'))
                 ->setKiloBitrate($videoKbps)
                 ->setAudioKiloBitrate(128);
 
@@ -41,21 +41,19 @@ class FfmpegLocalStepsEncoderService implements VideoQualityProcessorInterface
                 ->addFormat($format, function ($media) use ($width, $height) {
                     $media->scale($width, $height);
                 })->beforeSaving(function ($commands) use ($videoKbps) {
+
                     return array_merge($commands, [
-                        '-preset', 'veryfast',
+                        '-preset', 'p4',           // NVENC preset (p1=fastest, p7=slowest)
+                        '-tune', 'hq',
                         '-profile:v', 'main',
                         '-pix_fmt', 'yuv420p',
-                        '-crf', '23',
-
-                        // HARD BITRATE LIMIT
+                        '-rc', 'vbr',              // NVENC rate control (replaces -crf)
+                        '-cq', '23',               // Quality target (NVENC equivalent of crf)
                         '-maxrate', $videoKbps.'k',
                         '-bufsize', ($videoKbps * 2).'k',
-
-                        // HLS GOP control
                         '-g', '96',
                         '-keyint_min', '96',
                         '-sc_threshold', '0',
-
                         '-movflags', '+faststart',
                     ]);
                 })
