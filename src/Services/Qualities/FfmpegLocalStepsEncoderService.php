@@ -75,7 +75,7 @@ class FfmpegLocalStepsEncoderService implements VideoQualityProcessorInterface
 
             return new VideoConverted($quality);
         } catch (\Throwable $th) {
-            \Log::error("FAILED FfmpegService: {$th->getMessage()}");
+            throw $th;
             return new VideoConverted($quality);
         }
     }
