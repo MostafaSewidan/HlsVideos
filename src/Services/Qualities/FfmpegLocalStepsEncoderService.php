@@ -22,6 +22,7 @@ class FfmpegLocalStepsEncoderService implements VideoQualityProcessorInterface
             $this->video = $quality->video;
             $this->quality = $quality;
 
+
             $this->downloadVideoFromUploadedVideosDisk();
 
             [$width, $height, $videoKbps] = $this->getQualitySettings($this->quality->quality);
@@ -103,8 +104,8 @@ class FfmpegLocalStepsEncoderService implements VideoQualityProcessorInterface
 
             return new VideoConverted($quality);
         } catch (\Throwable $th) {
-            \Log::error("FAILED FfmpegService: {$th->getMessage()}");
-            return new VideoConverted($quality);
+            throw $th;
+            // return new VideoConverted($quality);
         }
     }
 
