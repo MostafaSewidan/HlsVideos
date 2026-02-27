@@ -45,7 +45,8 @@ class FfmpegLocalStepsEncoderGpuService implements VideoQualityProcessorInterfac
                 ->setKeyFrameInterval(96)
                 ->addFormat($format)        // no scale() here — handled via scale_cuda below
                 ->beforeSaving(function ($commands) use ($videoKbps, $width, $height) {
-
+                    \Log::info('FFmpeg raw commands', ['commands' => $commands]);
+                    dd($commands);
 
                     // Strip CPU-only flags
                     $strip = ['-crf', '-preset', '-profile:v', '-vf', '-filter:v', '-pix_fmt', '-b:v'];
