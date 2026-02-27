@@ -45,46 +45,57 @@ class FfmpegLocalStepsEncoderGpuService implements VideoQualityProcessorInterfac
                 ->setKeyFrameInterval(96)
                 ->addFormat($format)        // no scale() here — handled via scale_cuda below
                 ->beforeSaving(function ($commands) use ($videoKbps, $width, $height) {
-                    \Log::info('FFmpeg raw commands', ['commands' => $commands]);
-                    dd($commands);
 
-                    // Strip CPU-only flags
-                    $strip = ['-crf', '-preset', '-profile:v', '-vf', '-filter:v', '-pix_fmt', '-b:v'];
-                    $filtered = [];
+                    $result = [];
                     $skipNext = false;
 
-                    foreach ($commands as $cmd) {
+                    foreach ($commands as $index => $cmd) {
                         if ($skipNext) {
                             $skipNext = false;
                             continue;
                         }
-                        if (in_array($cmd, $strip)) {
+
+                        // Replace libx264 with h264_nvenc (value after -vcodec)
+                        if ($cmd === 'libx264') {
+                            $result[] = 'h264_nvenc';
+                            continue;
+                        }
+
+                        // Remove -b:v and its value (we'll re-add it)
+                        if ($cmd === '-b:v') {
                             $skipNext = true;
                             continue;
                         }
-                        $filtered[] = $cmd;
+
+                        // Remove -threads and its value (can conflict with NVENC)
+                        if ($cmd === '-threads') {
+                            $skipNext = true;
+                            continue;
+                        }
+
+                        $result[] = $cmd;
                     }
 
-                    // Replace libx264 with h264_nvenc
-                    $filtered = array_map(fn ($cmd) => $cmd === 'libx264' ? 'h264_nvenc' : $cmd, $filtered);
+                    // Find the position just before the output file (last element)
+                    $outputFile = array_pop($result);
 
-                    return array_merge($filtered, [
+                    array_push($result,
                         '-hwaccel', 'cuda',
                         '-hwaccel_output_format', 'cuda',
                         '-vf', "scale_cuda={$width}:{$height}",
                         '-b:v', $videoKbps.'k',
+                        '-maxrate', $videoKbps.'k',
+                        '-bufsize', ($videoKbps * 2).'k',
                         '-preset', 'p4',
                         '-tune', 'hq',
                         '-rc', 'vbr',
                         '-profile:v', 'main',
                         '-pix_fmt', 'yuv420p',
-                        '-maxrate', $videoKbps.'k',
-                        '-bufsize', ($videoKbps * 2).'k',
-                        '-g', '96',
-                        '-keyint_min', '96',
-                        '-sc_threshold', '0',
                         '-movflags', '+faststart',
-                    ]);
+                        $outputFile               // put output file back at the end
+                    );
+
+                    return $result;
                 })
                 ->useSegmentFilenameGenerator(function ($name, $format, $key, callable $segments, callable $playlist) {
                     $segments("{$name}-{$format->getKiloBitrate()}-{$key}-%03d.ts");
