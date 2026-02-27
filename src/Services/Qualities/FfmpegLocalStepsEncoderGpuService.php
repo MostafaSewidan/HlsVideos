@@ -46,29 +46,24 @@ class FfmpegLocalStepsEncoderGpuService implements VideoQualityProcessorInterfac
                 ->addFormat($format)        // no scale() here — handled via scale_cuda below
                 ->beforeSaving(function ($commands) use ($videoKbps, $width, $height) {
 
+
                     $result = [];
                     $skipNext = false;
 
-                    foreach ($commands as $index => $cmd) {
+                    foreach ($commands as $cmd) {
                         if ($skipNext) {
                             $skipNext = false;
                             continue;
                         }
 
-                        // Replace libx264 with h264_nvenc (value after -vcodec)
+                        // Swap codec
                         if ($cmd === 'libx264') {
                             $result[] = 'h264_nvenc';
                             continue;
                         }
 
-                        // Remove -b:v and its value (we'll re-add it)
-                        if ($cmd === '-b:v') {
-                            $skipNext = true;
-                            continue;
-                        }
-
-                        // Remove -threads and its value (can conflict with NVENC)
-                        if ($cmd === '-threads') {
+                        // Strip flags we'll re-add
+                        if (in_array($cmd, ['-b:v', '-threads'])) {
                             $skipNext = true;
                             continue;
                         }
@@ -76,13 +71,13 @@ class FfmpegLocalStepsEncoderGpuService implements VideoQualityProcessorInterfac
                         $result[] = $cmd;
                     }
 
-                    // Find the position just before the output file (last element)
                     $outputFile = array_pop($result);
 
                     array_push($result,
-                        '-hwaccel', 'cuda',
-                        '-hwaccel_output_format', 'cuda',
-                        '-vf', "scale_cuda={$width}:{$height}",
+                        // CPU scale (hwaccel_output_format cuda can't be used in output context)
+                        '-vf', "scale={$width}:{$height}",
+
+                        // NVENC encoder — GPU encoding still happens here
                         '-b:v', $videoKbps.'k',
                         '-maxrate', $videoKbps.'k',
                         '-bufsize', ($videoKbps * 2).'k',
@@ -92,7 +87,8 @@ class FfmpegLocalStepsEncoderGpuService implements VideoQualityProcessorInterfac
                         '-profile:v', 'main',
                         '-pix_fmt', 'yuv420p',
                         '-movflags', '+faststart',
-                        $outputFile               // put output file back at the end
+
+                        $outputFile
                     );
 
                     return $result;
