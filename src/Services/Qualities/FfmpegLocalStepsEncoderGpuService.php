@@ -7,6 +7,7 @@ use HlsVideos\Models\HlsVideoQuality;
 use HlsVideos\Services\Contracts\VideoQualityProcessorInterface;
 use FFMpeg;
 use HlsVideos\Services\VideoService;
+use FFMpeg\Format\Video\X264;
 use HlsVideos\Services\Formats\H264Nvenc;
 
 class FfmpegLocalStepsEncoderGpuService implements VideoQualityProcessorInterface
