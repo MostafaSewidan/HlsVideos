@@ -30,4 +30,9 @@ class H264Nvenc extends DefaultVideo
     {
         return [];
     }
+
+    public function supportBFrames(): bool
+    {
+        return false; // NVENC handles B-frames internally via -bf flag if needed
+    }
 }
