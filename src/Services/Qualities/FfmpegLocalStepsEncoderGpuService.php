@@ -27,8 +27,7 @@ class FfmpegLocalStepsEncoderGpuService implements VideoQualityProcessorInterfac
             [$width, $height, $videoKbps] = $this->getQualitySettings($this->quality->quality);
             $bandwidth = $videoKbps * 1024;
 
-            // Create format
-            $format = (new H264Nvenc('aac'))
+            $format = (new X264('aac'))
                 ->setKiloBitrate($videoKbps)
                 ->setAudioKiloBitrate(128);
 
@@ -46,8 +45,9 @@ class FfmpegLocalStepsEncoderGpuService implements VideoQualityProcessorInterfac
                 ->addFormat($format)        // no scale() here — handled via scale_cuda below
                 ->beforeSaving(function ($commands) use ($videoKbps, $width, $height) {
 
-                    // ── Strip CPU-only flags injected by the library ───────────────────
-                    $strip = ['-crf', '-preset', '-profile:v', '-vf', '-filter:v', '-pix_fmt'];
+
+                    // Strip CPU-only flags
+                    $strip = ['-crf', '-preset', '-profile:v', '-vf', '-filter:v', '-pix_fmt', '-b:v'];
                     $filtered = [];
                     $skipNext = false;
 
@@ -57,35 +57,30 @@ class FfmpegLocalStepsEncoderGpuService implements VideoQualityProcessorInterfac
                             continue;
                         }
                         if (in_array($cmd, $strip)) {
-                            $skipNext = true; // also drop the value that follows
+                            $skipNext = true;
                             continue;
                         }
                         $filtered[] = $cmd;
                     }
 
-                    // ── Append GPU flags ───────────────────────────────────────────────
+                    // Replace libx264 with h264_nvenc
+                    $filtered = array_map(fn ($cmd) => $cmd === 'libx264' ? 'h264_nvenc' : $cmd, $filtered);
+
                     return array_merge($filtered, [
-                        // GPU decode + scale
                         '-hwaccel', 'cuda',
                         '-hwaccel_output_format', 'cuda',
                         '-vf', "scale_cuda={$width}:{$height}",
-
-                        // NVENC encoder settings
-                        '-preset', 'p4',      // p1=fastest … p7=best quality
+                        '-b:v', $videoKbps.'k',
+                        '-preset', 'p4',
                         '-tune', 'hq',
-                        '-rc', 'vbr',     // variable bitrate — best for VOD
+                        '-rc', 'vbr',
                         '-profile:v', 'main',
                         '-pix_fmt', 'yuv420p',
-
-                        // Bitrate envelope
                         '-maxrate', $videoKbps.'k',
                         '-bufsize', ($videoKbps * 2).'k',
-
-                        // GOP / keyframe control
                         '-g', '96',
                         '-keyint_min', '96',
                         '-sc_threshold', '0',
-
                         '-movflags', '+faststart',
                     ]);
                 })
