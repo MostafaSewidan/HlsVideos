@@ -2,17 +2,32 @@
 
 namespace HlsVideos\Services\Formats;
 
-use FFMpeg\Format\Video\X264;
+use FFMpeg\Format\Video\DefaultVideo;
 
-class H264Nvenc extends X264
+class H264Nvenc extends DefaultVideo
 {
-    public function __construct(string $audioCodec = 'aac', string $videoCodec = 'h264_nvenc')
+    public function __construct(string $audioCodec = 'aac')
     {
-        parent::__construct($audioCodec, $videoCodec);
+        $this->audioCodec = $audioCodec;
+    }
+
+    public function getAvailableAudioCodecs(): array
+    {
+        return ['aac', 'mp3', 'libmp3lame'];
     }
 
     public function getAvailableVideoCodecs(): array
     {
         return ['h264_nvenc'];
+    }
+
+    public function getVideoCodec(): string
+    {
+        return 'h264_nvenc';
+    }
+
+    public function getExtraParams(): array
+    {
+        return [];
     }
 }
