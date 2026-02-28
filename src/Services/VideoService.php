@@ -286,9 +286,12 @@ class VideoService
                 $replacePath = VideoService::getMediaPath().$videoId;
                 $subdomain = VideoService::getSubDomain();
 
-                $oldTsFilesUrl = "https://$subdomain.stepsio.com/api/vd/{$videoId}/stream/{$quality}";
+
+                $oldTsFilesUrl = "https://$subdomain.stepsio.com/api/vd/{$videoId}/stream/{$quality}/";
+                $content = str_replace($oldTsFilesUrl, '', $content);
                 $newTsFilesUrl = "https://stepsio-stream.org/$replacePath/{$quality}";
-                $content = str_replace($oldTsFilesUrl, $newTsFilesUrl, $content);
+                $content = str_replace('index-', "$newTsFilesUrl/index-", $content);
+
             }
 
             return response($content, 200, [
@@ -380,13 +383,12 @@ class VideoService
 
         $content = Storage::disk(config('hls-videos.stream_disk'))->get($path);
         $oldTsFilesUrl = route(config('hls-videos.access_route_stream'), [$video->id, $firstQ->quality]);
-        $oldTsFilesUrl = route(config('hls-videos.access_route_stream'), [$video->id, $firstQ->quality]);
+
+        $content = str_replace("$oldTsFilesUrl/", '', $content);
         $newTsFilesUrl = "$localPath/.$video->id";
-        $content = str_replace($oldTsFilesUrl, $newTsFilesUrl, $content);
+        $content = str_replace('index-', "$newTsFilesUrl/index-", $content);
         $secrtUri = route(config('hls-videos.access_route_stream'), [$video->id, $firstQ->quality, "secret.key"]);
         $content = str_replace('secret.key', $secrtUri, $content);
-
-
 
         return [
             "playlist" => [
