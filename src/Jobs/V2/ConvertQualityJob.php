@@ -14,7 +14,7 @@ class ConvertQualityJob implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
-    public int $timeout = 3600; // 1 hour
+    public int $timeout = 100000; // 10 seconds
     public int $tries = 1;      // don't retry — encoding from scratch wastes time
     public int $maxExceptions = 1;
 
