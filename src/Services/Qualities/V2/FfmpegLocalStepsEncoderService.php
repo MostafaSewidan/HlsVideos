@@ -8,13 +8,12 @@ use App\Models\HlsVideoQuality as AppHlsVideoQuality;
 use FFMpeg;
 use FFMpeg\Format\Video\X264;
 use HlsVideos\Services\VideoService;
-use HlsVideos\Services\Contracts\VideoQualityProcessorInterface;
 use HlsVideos\Services\CompressService;
 use HlsVideos\Models\HlsVideo;
 use Illuminate\Support\Facades\Event;
 use HlsVideos\Events\VideoConvertedEvent;
 
-class FfmpegLocalStepsEncoderService implements VideoQualityProcessorInterface
+class FfmpegLocalStepsEncoderService
 {
     protected $quality;
     protected $qualities;
@@ -22,10 +21,10 @@ class FfmpegLocalStepsEncoderService implements VideoQualityProcessorInterface
     protected $headers;
 
 
-    public function convertVideo($videoFile, HlsVideoQuality $quality): VideoConverted
+    public function convertVideo($videoFile, HlsVideo $video)
     {
         // try {
-        $this->video = $quality->video;
+        $this->video = $video;
         AppHlsVideoQuality::where('hls_video_id', $this->video->id)->delete();
 
         foreach (config('hls-videos.qualities') as $configQuality) {
@@ -112,7 +111,7 @@ class FfmpegLocalStepsEncoderService implements VideoQualityProcessorInterface
         $this->uploadVideoToStorage();
         CompressService::compressAndUploadVideo($this->video);
         $this->uploadFinished();
-        return new VideoConverted($this->video->qualities()->first(), true);
+        return true;
         // } catch (\Throwable $th) {
         //     throw $th;
         //     \Log::error("FAILED FfmpegService: {$th->getMessage()}");
