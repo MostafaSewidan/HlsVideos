@@ -14,9 +14,9 @@ class ConvertQualityJob implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
-    public int $timeout = 100000; // 10 seconds
-    public int $tries = 1;      // don't retry — encoding from scratch wastes time
-    public int $maxExceptions = 1;
+    // public int $timeout = 100000; // 10 seconds
+    // public int $tries = 1;      // don't retry — encoding from scratch wastes time
+    // public int $maxExceptions = 1;
 
     public function __construct(protected HlsVideo $video, protected $tenant)
     {
