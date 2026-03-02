@@ -34,4 +34,24 @@ class R2StorageService implements VideoStorageInterface
             throw new \Exception("upload Results Failed: " . $e->getMessage());
         }
    }
+   public function uploadAllFolderWithAllFilesToR2($videoId,$storageConfig): bool{
+        try{
+            $videoRoot = VideoService::getMediaPath()."$videoId/";
+            $r2Disk = Storage::disk($storageConfig['disk_name']);
+            $tempDisk = Storage::disk(config('hls-videos.temp_disk'));
+
+            // Get all files recursively (keeps folder structure: e.g. 360/vd.m3u8, 480/vd.m3u8, index.m3u8)
+            $allFiles = $tempDisk->allFiles($videoRoot);
+
+            foreach ($allFiles as $relativePath) {
+                $fileContents = $tempDisk->get($relativePath);
+                // Same relative path on R2 preserves the folder structure
+                $r2Disk->put($relativePath, $fileContents);
+            }
+
+            return true;
+        } catch (\Exception $e) {
+            throw new \Exception("upload Results Failed: " . $e->getMessage());
+        }
+   }
 }
