@@ -24,100 +24,100 @@ class FfmpegLocalStepsEncoderService implements VideoQualityProcessorInterface
 
     public function convertVideo($videoFile, HlsVideoQuality $quality): VideoConverted
     {
-        try {
-            $this->video = $quality->video;
-            AppHlsVideoQuality::where('hls_video_id', $this->video->id)->delete();
+        // try {
+        $this->video = $quality->video;
+        AppHlsVideoQuality::where('hls_video_id', $this->video->id)->delete();
 
-            foreach (config('hls-videos.qualities') as $configQuality) {
-                AppHlsVideoQuality::create([
-                    'hls_video_id' => $this->video->id,
-                    'quality' => $configQuality['quality'],
-                    'convert_service' => $configQuality['convert_service'],
-                    'status' => AppHlsVideoQuality::CONVERTING,
-                ]);
-            }
-
-            $this->qualities = AppHlsVideoQuality::where('hls_video_id', $this->video->id)->get();
-
-            $this->downloadVideoFromUploadedVideosDisk();
-
-            $transcode = FFMpeg::fromDisk(config('hls-videos.temp_disk'))
-                ->open($this->video->temp_video_path)
-                ->exportForHLS();
-
-            if (isset($this->video->stream_data['hls_key'])) {
-                $transcode->withEncryptionKey(base64_decode($this->video->stream_data['hls_key']));
-            }
-
-            foreach ($this->qualities as $quality) {
-
-                [$width, $height, $videoKbps] = $this->getQualitySettings($quality->quality);
-                $format = (new X264('aac'))
-                    ->setKiloBitrate($videoKbps)
-                    ->setAudioKiloBitrate(128);
-
-                $transcode->addFormat($format, function ($media) use ($width, $height) {
-                    $media->scale($width, $height);
-                })
-                    ->beforeSaving(function ($commands) use ($videoKbps) {
-                        return array_merge($commands, [
-                            '-preset', 'ultrafast',  // fastest CPU preset (~30-50% speedup vs veryfast)
-                            '-tune', 'fastdecode', // simpler encode decisions = faster
-                            '-profile:v', 'main',
-                            '-pix_fmt', 'yuv420p',
-                            '-crf', '28',         // less compression work, slightly larger output
-                            '-maxrate', $videoKbps.'k',
-                            '-bufsize', ($videoKbps * 4).'k', // 4x buffer = more RAM, less bitrate regulation work
-                            '-g', '96',
-                            '-keyint_min', '96',
-                            '-sc_threshold', '0',
-                            '-threads', '0',          // use all available CPU cores
-                            // -movflags +faststart removed (irrelevant for HLS segments)
-                        ]);
-                    });
-            }
-            // One generator covers all qualities — keyed by kiloBitrate which maps 1-to-1 with quality.
-            $kbpsToQuality = $this->qualities->keyBy(function (AppHlsVideoQuality $q) {
-                return $this->getQualitySettings($q->quality)[2]; // index 2 = videoKbps
-            });
-
-            $videoId = $this->video->id;
-
-            $transcode->useSegmentFilenameGenerator(function ($name, $format, $key, callable $segments, callable $playlist) use ($kbpsToQuality, $videoId) {
-                $kbps = $format->getKiloBitrate();
-                $quality = $kbpsToQuality->get($kbps);
-                $label = $quality ? $quality->quality : $kbps;
-
-                $segments("{$name}-{$label}-{$kbps}-{$key}-%03d.ts");
-                $playlist(VideoService::getMediaPath()."{$videoId}/{$label}-vd.m3u8");
-            });
-
-            $transcode
-                ->toDisk(config('hls-videos.temp_disk'))
-                ->save(VideoService::getMediaPath()."{$videoId}/index.m3u8");
-
-            $this->handlePlaylists();
-
-            $this->qualities->map(function (AppHlsVideoQuality $quality) {
-                [$width, $height, $videoKbps] = $this->getQualitySettings($quality->quality);
-                $bandwidth = $videoKbps * 1024;
-
-                $quality->update([
-                    'convert_data' => compact('width', 'height', 'videoKbps', 'bandwidth'),
-                ]);
-
-                $quality->refresh();
-            });
-
-            $this->uploadVideoToStorage();
-            CompressService::compressAndUploadVideo($this->video);
-            $this->uploadFinished();
-            return new VideoConverted($this->video->qualities()->first(), true);
-        } catch (\Throwable $th) {
-            throw $th;
-            \Log::error("FAILED FfmpegService: {$th->getMessage()}");
-            return new VideoConverted($this->video->qualities()->first());
+        foreach (config('hls-videos.qualities') as $configQuality) {
+            AppHlsVideoQuality::create([
+                'hls_video_id' => $this->video->id,
+                'quality' => $configQuality['quality'],
+                'convert_service' => $configQuality['convert_service'],
+                'status' => AppHlsVideoQuality::CONVERTING,
+            ]);
         }
+
+        $this->qualities = AppHlsVideoQuality::where('hls_video_id', $this->video->id)->get();
+
+        $this->downloadVideoFromUploadedVideosDisk();
+
+        $transcode = FFMpeg::fromDisk(config('hls-videos.temp_disk'))
+            ->open($this->video->temp_video_path)
+            ->exportForHLS();
+
+        if (isset($this->video->stream_data['hls_key'])) {
+            $transcode->withEncryptionKey(base64_decode($this->video->stream_data['hls_key']));
+        }
+
+        foreach ($this->qualities as $quality) {
+
+            [$width, $height, $videoKbps] = $this->getQualitySettings($quality->quality);
+            $format = (new X264('aac'))
+                ->setKiloBitrate($videoKbps)
+                ->setAudioKiloBitrate(128);
+
+            $transcode->addFormat($format, function ($media) use ($width, $height) {
+                $media->scale($width, $height);
+            })
+                ->beforeSaving(function ($commands) use ($videoKbps) {
+                    return array_merge($commands, [
+                        '-preset', 'ultrafast',  // fastest CPU preset (~30-50% speedup vs veryfast)
+                        '-tune', 'fastdecode', // simpler encode decisions = faster
+                        '-profile:v', 'main',
+                        '-pix_fmt', 'yuv420p',
+                        '-crf', '28',         // less compression work, slightly larger output
+                        '-maxrate', $videoKbps.'k',
+                        '-bufsize', ($videoKbps * 4).'k', // 4x buffer = more RAM, less bitrate regulation work
+                        '-g', '96',
+                        '-keyint_min', '96',
+                        '-sc_threshold', '0',
+                        '-threads', '0',          // use all available CPU cores
+                        // -movflags +faststart removed (irrelevant for HLS segments)
+                    ]);
+                });
+        }
+        // One generator covers all qualities — keyed by kiloBitrate which maps 1-to-1 with quality.
+        $kbpsToQuality = $this->qualities->keyBy(function (AppHlsVideoQuality $q) {
+            return $this->getQualitySettings($q->quality)[2]; // index 2 = videoKbps
+        });
+
+        $videoId = $this->video->id;
+
+        $transcode->useSegmentFilenameGenerator(function ($name, $format, $key, callable $segments, callable $playlist) use ($kbpsToQuality, $videoId) {
+            $kbps = $format->getKiloBitrate();
+            $quality = $kbpsToQuality->get($kbps);
+            $label = $quality ? $quality->quality : $kbps;
+
+            $segments("{$name}-{$label}-{$kbps}-{$key}-%03d.ts");
+            $playlist(VideoService::getMediaPath()."{$videoId}/{$label}-vd.m3u8");
+        });
+
+        $transcode
+            ->toDisk(config('hls-videos.temp_disk'))
+            ->save(VideoService::getMediaPath()."{$videoId}/index.m3u8");
+
+        $this->handlePlaylists();
+
+        $this->qualities->map(function (AppHlsVideoQuality $quality) {
+            [$width, $height, $videoKbps] = $this->getQualitySettings($quality->quality);
+            $bandwidth = $videoKbps * 1024;
+
+            $quality->update([
+                'convert_data' => compact('width', 'height', 'videoKbps', 'bandwidth'),
+            ]);
+
+            $quality->refresh();
+        });
+
+        $this->uploadVideoToStorage();
+        CompressService::compressAndUploadVideo($this->video);
+        $this->uploadFinished();
+        return new VideoConverted($this->video->qualities()->first(), true);
+        // } catch (\Throwable $th) {
+        //     throw $th;
+        //     \Log::error("FAILED FfmpegService: {$th->getMessage()}");
+        //     return new VideoConverted($this->video->qualities()->first());
+        // }
     }
 
     protected function getQualitySettings($quality)

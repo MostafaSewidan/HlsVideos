@@ -16,13 +16,13 @@ class ConvertQualityJob implements ShouldQueue
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
 
-    public function __construct(protected HlsVideoQuality $hlsVideoQuality, protected $tenant)
+    public function __construct(protected $hlsVideoQuality, protected $tenant)
     {
     }
 
     public function handle()
     {
-        try {
+        // try {
 
             $this->tenant->makeCurrent();
 
@@ -45,9 +45,9 @@ class ConvertQualityJob implements ShouldQueue
                     $service->convertVideo($video->temp_video, $this->hlsVideoQuality);
                     break;
             }
-        } catch (\Throwable $e) {
-            \Log::error("FAILED ConvertQualityJob: {$e->getMessage()}");
-            throw $e;
-        }
+        // } catch (\Throwable $e) {
+        //     \Log::error("FAILED ConvertQualityJob: {$e->getMessage()}");
+        //     throw $e;
+        // }
     }
 }
