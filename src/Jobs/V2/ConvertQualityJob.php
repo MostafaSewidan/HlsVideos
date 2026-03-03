@@ -9,30 +9,49 @@ use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use HlsVideos\Services\Qualities\V2\FfmpegLocalStepsEncoderService;
 use HlsVideos\Models\HlsVideo;
+use Illuminate\Support\Facades\Log;
+
+use Illuminate\Support\Facades\Event;
+use HlsVideos\Events\VideoConvertedEvent;
+use HlsVideos\Events\VideoConvertedErrorEvent;
 
 class ConvertQualityJob implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
-    // public int $timeout = 100000; // 10 seconds
-    // public int $tries = 1;      // don't retry — encoding from scratch wastes time
-    // public int $maxExceptions = 1;
+    public int $timeout = 3600;       // 1 hour (encoding can be long)
+    public int $tries = 1;            // don't retry — encoding from scratch wastes time
+    public int $maxExceptions = 1;
 
     public function __construct(protected HlsVideo $video, protected $tenant)
     {
     }
 
-    public function handle()
+    public function handle(): void
     {
-        // try {
+        try {
+            $this->tenant->makeCurrent();
 
-        $this->tenant->makeCurrent();
+            $service = new FfmpegLocalStepsEncoderService;
+            $service->convertVideo('', $this->video);
+        } catch (\Throwable $e) {
+            Log::error('ConvertQualityJob failed', [
+                'video_id' => $this->video->id,
+                'message' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+            throw $e;
+        }
+    }
 
-        $service = new FfmpegLocalStepsEncoderService;
-        $service->convertVideo('', $this->video);
-        // } catch (\Throwable $e) {
-        //     \Log::error("FAILED ConvertQualityJob: {$e->getMessage()}");
-        //     throw $e;
-        // }
+    public function failed(\Throwable $e): void
+    {
+        Event::dispatch(new VideoConvertedErrorEvent($this->video, app('currentTenant')));
+
+        Log::error('ConvertQualityJob permanently failed after retries', [
+            'video_id' => $this->video->id,
+            'message' => $e->getMessage(),
+        ]);
+        // Optionally: update $this->video status, notify, etc.
     }
 }
