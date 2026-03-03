@@ -46,7 +46,7 @@ class ConvertQualityJob implements ShouldQueue
 
     public function failed(\Throwable $e): void
     {
-        Event::dispatch(new VideoConvertedErrorEvent($this->video, app('currentTenant')));
+        Event::dispatch(new VideoConvertedErrorEvent($this->video, app('currentTenant'),$e->getMessage()));
 
         Log::error('ConvertQualityJob permanently failed after retries', [
             'video_id' => $this->video->id,
