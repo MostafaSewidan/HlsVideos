@@ -289,7 +289,9 @@ class VideoService
                 $newTsFilesUrl = "https://stepsio-stream.org/$replacePath/{$quality}";
                 $content = str_replace('index-', "$newTsFilesUrl/index-", $content);
 
-            } elseif ($file == 'index.m3u8') {
+            }
+
+            if ($path == 'index.m3u8') {
                 $content = str_replace('cdn.', "$subdomain.", $content);
             }
 
