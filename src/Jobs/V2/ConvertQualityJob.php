@@ -12,16 +12,15 @@ use HlsVideos\Models\HlsVideo;
 use Illuminate\Support\Facades\Log;
 
 use Illuminate\Support\Facades\Event;
-use HlsVideos\Events\VideoConvertedEvent;
 use HlsVideos\Events\VideoConvertedErrorEvent;
 
 class ConvertQualityJob implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
-    public int $timeout = 3600;       // 1 hour (encoding can be long)
-    public int $tries = 1;            // don't retry — encoding from scratch wastes time
-    public int $maxExceptions = 1;
+    // public int $timeout = 3600;       // 1 hour (encoding can be long)
+    // public int $tries = 1;            // don't retry — encoding from scratch wastes time
+    // public int $maxExceptions = 1;
 
     public function __construct(protected HlsVideo $video, protected $tenant)
     {
