@@ -291,7 +291,7 @@ class VideoService
 
             }
 
-            if ($path == '/index.m3u8') {
+            if (! $file) {
                 $content = str_replace('cdn.', "$subdomain.", $content);
             }
 
