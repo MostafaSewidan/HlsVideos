@@ -268,7 +268,8 @@ class VideoService
                 $path .= "/index.m3u8";
 
             $disk = Storage::disk(config('hls-videos.stream_disk'));
-
+            $replacePath = VideoService::getMediaPath().$videoId;
+            $subdomain = VideoService::getSubDomain();
             $content = $disk->get($path);
 
             // Determine content type based on file extension
@@ -283,15 +284,13 @@ class VideoService
 
             if ($file == 'vd.m3u8') {
 
-                $replacePath = VideoService::getMediaPath().$videoId;
-                $subdomain = VideoService::getSubDomain();
-
-
                 $oldTsFilesUrl = "https://$subdomain.stepsio.com/api/vd/{$videoId}/stream/{$quality}/";
                 $content = str_replace($oldTsFilesUrl, '', $content);
                 $newTsFilesUrl = "https://stepsio-stream.org/$replacePath/{$quality}";
                 $content = str_replace('index-', "$newTsFilesUrl/index-", $content);
 
+            } elseif ($file == 'index.m3u8') {
+                $content = str_replace('cdn.', "$subdomain.", $content);
             }
 
             return response($content, 200, [
