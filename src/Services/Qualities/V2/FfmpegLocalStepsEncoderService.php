@@ -39,6 +39,7 @@ class FfmpegLocalStepsEncoderService
         $this->qualities = AppHlsVideoQuality::where('hls_video_id', $this->video->id)->get();
 
         $this->downloadVideoFromUploadedVideosDisk();
+        $this->normalizeVideoFps();
 
         $transcode = FFMpeg::fromDisk(config('hls-videos.temp_disk'))
             ->open($this->video->temp_video_path)
@@ -217,5 +218,24 @@ class FfmpegLocalStepsEncoderService
         \Storage::disk(config('hls-videos.temp_disk'))->deleteDirectory(VideoService::getMediaPath().$this->video->id);
         \Storage::disk(config('hls-videos.uploaded_videos_disk'))->deleteDirectory("temp-videos/".VideoService::getMediaPath()."{$this->video->id}");
         Event::dispatch(new VideoConvertedEvent($this->video, app('currentTenant')));
+    }
+    protected function normalizeVideoFps(): void
+    {
+        $sourcePath = VideoService::getMediaPath()."{$this->video->id}/{$this->video->file_name}";
+        $localDisk = \Storage::disk(config('hls-videos.temp_disk'));
+
+        $fullSource = $localDisk->path($sourcePath);
+        $tempOutput = $localDisk->path(VideoService::getMediaPath()."{$this->video->id}/temp_normalized.mp4");
+
+        // Normalize to temp file first (can't overwrite input while FFmpeg is reading it)
+        $cmd = "/usr/bin/ffmpeg -y -i {$fullSource} -vf fps=30 -vsync cfr -c:v libx264 -preset ultrafast -c:a aac -movflags +faststart {$tempOutput}";
+        exec($cmd, $output, $returnCode);
+
+        if ($returnCode !== 0) {
+            throw new \Exception("Failed to normalize video: {$sourcePath}");
+        }
+
+        // Replace original with normalized
+        rename($tempOutput, $fullSource);
     }
 }
