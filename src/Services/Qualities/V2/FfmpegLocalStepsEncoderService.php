@@ -42,7 +42,9 @@ class FfmpegLocalStepsEncoderService
 
         $transcode = FFMpeg::fromDisk(config('hls-videos.temp_disk'))
             ->open($this->video->temp_video_path)
-            ->exportForHLS();
+            ->exportForHLS()
+            ->setSegmentLength(10)
+            ->setKeyFrameInterval(48);
 
         if (isset($this->video->stream_data['hls_key'])) {
             $transcode->withEncryptionKey(base64_decode($this->video->stream_data['hls_key']));
@@ -53,27 +55,20 @@ class FfmpegLocalStepsEncoderService
             [$width, $height, $videoKbps] = $this->getQualitySettings($quality->quality);
             $format = (new X264('aac'))
                 ->setKiloBitrate($videoKbps)
-                ->setAudioKiloBitrate(128);
+                ->setAudioKiloBitrate(128)
+                ->setAdditionalParameters([
+                    '-preset', 'ultrafast',
+                    '-tune', 'fastdecode',
+                    '-profile:v', 'main',
+                    '-pix_fmt', 'yuv420p',
+                    '-maxrate', $videoKbps.'k',
+                    '-bufsize', ($videoKbps * 4).'k',
+                    '-threads', '0',
+                ]);
 
             $transcode->addFormat($format, function ($media) use ($width, $height) {
                 $media->scale($width, $height);
-            })
-                ->beforeSaving(function ($commands) use ($videoKbps) {
-                    return array_merge($commands, [
-                        '-preset', 'ultrafast',  // fastest CPU preset (~30-50% speedup vs veryfast)
-                        '-tune', 'fastdecode', // simpler encode decisions = faster
-                        '-profile:v', 'main',
-                        '-pix_fmt', 'yuv420p',
-                        '-crf', '28',         // less compression work, slightly larger output
-                        '-maxrate', $videoKbps.'k',
-                        '-bufsize', ($videoKbps * 4).'k', // 4x buffer = more RAM, less bitrate regulation work
-                        '-g', '96',
-                        '-keyint_min', '96',
-                        '-sc_threshold', '0',
-                        '-threads', '0',          // use all available CPU cores
-                        // -movflags +faststart removed (irrelevant for HLS segments)
-                    ]);
-                });
+            });
         }
         // One generator covers all qualities — keyed by kiloBitrate which maps 1-to-1 with quality.
         $kbpsToQuality = $this->qualities->keyBy(function (AppHlsVideoQuality $q) {
