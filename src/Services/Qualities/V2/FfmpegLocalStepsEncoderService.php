@@ -39,7 +39,11 @@ class FfmpegLocalStepsEncoderService
         $this->qualities = AppHlsVideoQuality::where('hls_video_id', $this->video->id)->get();
 
         $this->downloadVideoFromUploadedVideosDisk();
-        // $this->normalizeVideoFps();
+
+        if ($this->needsNormalization()) {
+            \Log::info("Normalizing video", ['video' => $this->video->id]);
+            $this->normalizeVideoFps();
+        }
 
         $transcode = FFMpeg::fromDisk(config('hls-videos.temp_disk'))
             ->open($this->video->temp_video_path)
@@ -237,5 +241,39 @@ class FfmpegLocalStepsEncoderService
 
         // Replace original with normalized
         rename($tempOutput, $fullSource);
+    }
+
+    protected function needsNormalization(): bool
+    {
+        $sourcePath = VideoService::getMediaPath()."{$this->video->id}/{$this->video->file_name}";
+        $fullSource = \Storage::disk(config('hls-videos.temp_disk'))->path($sourcePath);
+
+        $cmd = "/usr/bin/ffprobe -v error -select_streams v:0 -show_entries stream=r_frame_rate,avg_frame_rate -of json {$fullSource}";
+        exec($cmd, $output, $returnCode);
+
+        if ($returnCode !== 0) {
+            return false;
+        }
+
+        $data = json_decode(implode('', $output), true);
+        $stream = $data['streams'][0] ?? null;
+
+        if (! $stream) {
+            return false;
+        }
+
+        // Parse r_frame_rate (e.g. "90000/1" → 90000)
+        [$rNum, $rDen] = explode('/', $stream['r_frame_rate']);
+        $rFps = $rDen > 0 ? $rNum / $rDen : 0;
+
+        // Parse avg_frame_rate (e.g. "250646777/3493015" → 71.75)
+        [$aNum, $aDen] = explode('/', $stream['avg_frame_rate']);
+        $avgFps = $aDen > 0 ? $aNum / $aDen : 0;
+
+        // Flag as needing normalization if:
+        $tooHighFps = $rFps > 60;                              // declared fps is unrealistic
+        $vfrDetected = $avgFps > 0 && abs($rFps - $avgFps) / max($avgFps, 1) > 0.2; // r_fps and avg_fps differ by >20%
+
+        return $tooHighFps || $vfrDetected;
     }
 }
