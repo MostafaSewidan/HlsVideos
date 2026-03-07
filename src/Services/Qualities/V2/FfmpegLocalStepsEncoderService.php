@@ -203,6 +203,19 @@ class FfmpegLocalStepsEncoderService
                 throw new \Exception("Source video file does not exist on uploaded_videos_disk: {$sourcePath}");
             }
         }
+
+        // Remove all *.ts files in the temp directory for this video if they exist
+        $tempDir = VideoService::getMediaPath()."{$this->video->id}/";
+        $localDisk = \Storage::disk(config('hls-videos.temp_disk'));
+
+        if ($localDisk->exists($tempDir)) {
+            $allFiles = $localDisk->allFiles($tempDir);
+            foreach ($allFiles as $file) {
+                if (str_ends_with($file, '.ts')) {
+                    $localDisk->delete($file);
+                }
+            }
+        }
     }
 
     private function uploadVideoToStorage()
