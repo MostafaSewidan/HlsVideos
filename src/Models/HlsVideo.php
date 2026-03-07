@@ -82,12 +82,7 @@ class HlsVideo extends Model
 
     public function scopeReady($query)
     {
-        return $query->where(function ($query) {
-            $query->where('status', self::READY)
-                ->orWhere(function ($query) {
-                    $query->where('stream_data->support_original', true);
-                });
-        });
+        return $query->where('status', self::READY);
     }
 
     public function getThumbUrlAttribute()
@@ -146,6 +141,7 @@ class HlsVideo extends Model
 
     public function getIsSupportOriginalAttribute()
     {
-        return isset($this->stream_data['support_original']) && $this->stream_data['support_original'] && $this->status != self::READY;
+        return false;
+        // return isset($this->stream_data['support_original']) && $this->stream_data['support_original'] && $this->status != self::READY;
     }
 }
