@@ -207,6 +207,13 @@ class FfmpegLocalStepsEncoderService
 
     private function uploadVideoToStorage()
     {
+        // Remove the original video file from the folder after upload
+        $localDisk = \Storage::disk(config('hls-videos.temp_disk'));
+        $sourcePath = VideoService::getMediaPath()."{$this->video->id}/{$this->video->file_name}";
+        if ($localDisk->exists($sourcePath)) {
+            $localDisk->delete($sourcePath);
+        }
+
         foreach (config('hls-videos.storages') as $key => $storage) {
             $service = new $storage['service'];
             $service->uploadAllFolderWithAllFilesToR2($this->video->id, $storage);
