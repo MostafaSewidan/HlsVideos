@@ -39,7 +39,7 @@ class FfmpegLocalStepsEncoderService
         $this->qualities = AppHlsVideoQuality::where('hls_video_id', $this->video->id)->get();
 
         $this->downloadVideoFromUploadedVideosDisk();
-        $this->normalizeVideoFps();
+        // $this->normalizeVideoFps();
 
         $transcode = FFMpeg::fromDisk(config('hls-videos.temp_disk'))
             ->open($this->video->temp_video_path)
