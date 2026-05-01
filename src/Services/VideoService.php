@@ -288,6 +288,7 @@ class VideoService
                 $content = str_replace($oldTsFilesUrl, '', $content);
                 $newTsFilesUrl = "https://stepsio-stream.org/$replacePath/{$quality}";
                 $content = str_replace('index-', "$newTsFilesUrl/index-", $content);
+                $content = preg_replace('/URI="[^"]*secret\.key"/', 'URI="secret.key"', $content);
 
             }
 
