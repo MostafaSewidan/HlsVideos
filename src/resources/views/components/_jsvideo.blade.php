@@ -1,4 +1,4 @@
-<script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+<script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.13/dist/hls.min.js"></script>
 <script src="https://cdn.plyr.io/3.7.8/plyr.polyfilled.js"></script>
 
 @php
@@ -101,9 +101,22 @@
         if (Hls.isSupported()) {
 
             @if (auth('admin')->check())
-                const hls = new Hls();
+                const hls = new Hls({
+                    maxBufferLength: 30,
+                    maxMaxBufferLength: 600,
+                    maxBufferSize: 60 * 1000 * 1000,
+                    enableWorker: true,
+                    lowLatencyMode: false,
+                    backBufferLength: 90,
+                });
             @else
                 const hls = new Hls({
+                    maxBufferLength: 30,
+                    maxMaxBufferLength: 600,
+                    maxBufferSize: 60 * 1000 * 1000,
+                    enableWorker: true,
+                    lowLatencyMode: false,
+                    backBufferLength: 90,
                     xhrSetup: function(xhr, url) {
                         @if (isset($authToken))
                             xhr.setRequestHeader("Authorization",
@@ -133,11 +146,32 @@
 
                 initPlyr(availableQualities, hls, null);
             });
-
+            
             hls.on(Hls.Events.ERROR, function(event, data) {
                 if (data.fatal) {
-                    console.error('Fatal HLS error, falling back to native:', data);
-                    fallbackToNative(videoSource);
+                    switch (data.type) {
+                        case Hls.ErrorTypes.NETWORK_ERROR:
+                            console.warn('Fatal network error, trying to recover...');
+                            hls.startLoad(); // retry loading
+                            break;
+                        case Hls.ErrorTypes.MEDIA_ERROR:
+                            console.warn('Fatal media error, trying to recover...');
+                            hls.recoverMediaError();
+                            break;
+                        default:
+                            console.error('Unrecoverable fatal error:', data);
+                            fallbackToNative(videoSource);
+                            break;
+                    }
+                } else {
+                    // Non-fatal: log it so you can see what's happening
+                    console.warn('Non-fatal HLS error:', data.type, data.details, data);
+
+                    // Recovery for buffer stalls
+                    if (data.details === Hls.ErrorDetails.BUFFER_STALLED_ERROR ||
+                        data.details === Hls.ErrorDetails.BUFFER_NUDGE_ON_STALL) {
+                        hls.startLoad();
+                    }
                 }
             });
         }
