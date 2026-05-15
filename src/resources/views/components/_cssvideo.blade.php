@@ -91,14 +91,10 @@
     }
 
 
-    /* .video-container video {
-        position: absolute;
-        inset: 0;
-        width: 100%;
-        height: 100%;
-        object-fit: fill !important;
-        display: block;
-    } */
+    .video-container video,
+    .video-container .plyr__video-wrapper video {
+        object-fit: contain !important;
+    }
 
     .video-loading-overlay {
         position: absolute;
