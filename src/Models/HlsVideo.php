@@ -12,6 +12,8 @@ class HlsVideo extends Model
     const UPLOADED = 'uploaded';
     const PROCESSING = 'processing';
     const READY = 'ready';
+    const ORIENTATION_PORTRAIT = 'P';
+    const ORIENTATION_LANDSCAPE = 'L';
     protected $guarded = [];
     public $casts = ['stream_data' => 'array'];
     public $incrementing = false;

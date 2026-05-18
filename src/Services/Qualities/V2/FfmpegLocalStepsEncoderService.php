@@ -19,6 +19,7 @@ class FfmpegLocalStepsEncoderService
     protected $qualities;
     protected $video;
     protected $headers;
+    protected ?array $sourceDimensions = null;
 
 
     public function convertVideo($videoFile, HlsVideo $video)
@@ -44,6 +45,8 @@ class FfmpegLocalStepsEncoderService
             \Log::info("Normalizing video", ['video' => $this->video->id]);
             $this->normalizeVideoFps();
         }
+
+        $this->saveVideoOrientationType();
 
         $transcode = FFMpeg::fromDisk(config('hls-videos.temp_disk'))
             ->open($this->video->temp_video_path)
@@ -119,15 +122,84 @@ class FfmpegLocalStepsEncoderService
         // }
     }
 
+    protected function getSourceDimensions(): array
+    {
+        if ($this->sourceDimensions !== null) {
+            return $this->sourceDimensions;
+        }
+
+        $sourcePath = VideoService::getMediaPath()."{$this->video->id}/{$this->video->file_name}";
+        $fullSource = \Storage::disk(config('hls-videos.temp_disk'))->path($sourcePath);
+
+        $cmd = '/usr/bin/ffprobe -v error -select_streams v:0 -show_entries stream=width,height:stream_side_data=rotation -of json '.escapeshellarg($fullSource);
+        exec($cmd, $output, $returnCode);
+
+        $width = 1280;
+        $height = 720;
+        if ($returnCode === 0) {
+            $data = json_decode(implode('', $output), true);
+            $stream = $data['streams'][0] ?? null;
+            if ($stream) {
+                $width = (int) ($stream['width'] ?? $width);
+                $height = (int) ($stream['height'] ?? $height);
+                $rotation = 0;
+                foreach (($stream['side_data_list'] ?? []) as $sd) {
+                    if (isset($sd['rotation'])) {
+                        $rotation = (int) $sd['rotation'];
+                        break;
+                    }
+                }
+                if (abs($rotation) === 90 || abs($rotation) === 270) {
+                    [$width, $height] = [$height, $width];
+                }
+            }
+        }
+
+        return $this->sourceDimensions = [$width, $height];
+    }
+
+    protected function saveVideoOrientationType(): void
+    {
+        [$srcW, $srcH] = $this->getSourceDimensions();
+        $type = $srcH > $srcW ? HlsVideo::ORIENTATION_PORTRAIT : HlsVideo::ORIENTATION_LANDSCAPE;
+
+        $this->video->update([
+            'stream_data' => [
+                'type' => $type,
+                ...($this->video->stream_data ?? []),
+            ],
+        ]);
+        $this->video->refresh();
+    }
+
     protected function getQualitySettings($quality)
     {
-        return match ($quality) {
-            '1080' => [1920, 1080, 3000],
-            '720' => [1280, 720, 1500],
-            '480' => [854, 480, 500],
-            '360' => [640, 360, 400],
-            default => [1280, 720, 1000],
+        [$shortEdge, $videoKbps] = match ($quality) {
+            '1080' => [1080, 3000],
+            '720' => [720, 1500],
+            '480' => [480, 500],
+            '360' => [360, 400],
+            default => [720, 1000],
         };
+
+        [$srcW, $srcH] = $this->getSourceDimensions();
+        $isPortrait = $srcH > $srcW;
+        $srcShort = min($srcW, $srcH);
+        $srcLong = max($srcW, $srcH);
+
+        // Clamp to source - never upscale
+        $targetShort = min($shortEdge, $srcShort);
+        $targetLong = (int) round($targetShort * ($srcLong / max($srcShort, 1)));
+
+        // H.264 yuv420p requires even dimensions
+        $targetShort -= $targetShort % 2;
+        $targetLong -= $targetLong % 2;
+
+        [$width, $height] = $isPortrait
+            ? [$targetShort, $targetLong]
+            : [$targetLong, $targetShort];
+
+        return [$width, $height, $videoKbps];
     }
 
     protected function handlePlaylists(): void
