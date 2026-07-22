@@ -17,7 +17,7 @@ class UploadToStepsLocalencoderService implements VideoQualityProcessorInterface
     public function __construct()
     {
         $this->headers = [
-            'X-Processing-Password' => config('hls-videos.local_server_password'),
+            'X-Steps-Password' => config('hls-videos.local_server_password'),
             'Accept' => 'application/json',
         ];
     }
