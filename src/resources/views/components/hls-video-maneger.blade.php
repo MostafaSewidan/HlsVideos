@@ -768,6 +768,7 @@
     <span class="loader"></span>
 </div>
 
+@include('hls-videos::components.hls-folder-picker')
 
 @push('hls-scripts')
     <script src="https://releases.transloadit.com/uppy/v3.18.0/uppy.min.js"></script>
@@ -804,6 +805,7 @@
 
             // ✅ Remove previous file when a new one is added
             uppy.on('file-added', (file) => {
+                console.log('file-added', file);
                 if (uppy.getFiles().length > 1) {
                     const previousFile = uppy.getFiles()[0]; // Get the first file
                     uppy.removeFile(previousFile.id); // Remove the previous file
