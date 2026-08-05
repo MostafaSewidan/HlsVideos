@@ -42,6 +42,24 @@ class HlsFolderController extends ApiController
         ]);
     }
 
+    public function listFolders(Request $request)
+    {
+        if ($request->id)
+            $folder = $this->hls_folder->find($request->id);
+        else
+            $folder = $this->repository::masters($this->hls_folder)->first();
+
+        $folders = $folder?->relatedFolders ?? $this->repository::mainSharedFolders($this->hls_folder)->get();
+        $breadcrumb = $folder?->breadcrumb ?? collect([]);
+
+        return $this->response([
+            'folder' => $folder ? new FolderResource($folder) : null,
+            'folders' => LiteFolderResource::collection($folders),
+            'breadcrumb' => FolderBreadcrumbResource::collection($breadcrumb),
+            'is_shared_mode' => $this->repository::isSharedFolders(),
+        ]);
+    }
+
     public function create(HlsFolderRequest $request)
     {
         $parent = $this->hls_folder->find($request->parent_id);
