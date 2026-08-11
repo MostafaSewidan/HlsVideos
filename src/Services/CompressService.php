@@ -75,6 +75,14 @@ class CompressService
 
     static function compressAndUploadVideo(HlsVideo $video)
     {
+        if (
+            isset(app('currentTenant')->extra_attributes['access']['download_videos'])
+            && app('currentTenant')->extra_attributes['access']['download_videos']
+        ) {
+        } else {
+            return;
+        }
+
         $qualities = config('hls-videos.qualities');
         $firstQuality = reset($qualities);
         $quality = $video->qualities()->where('quality', $firstQuality['quality'])->first();
