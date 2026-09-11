@@ -772,6 +772,196 @@
 @push('hls-scripts')
     <script src="https://releases.transloadit.com/uppy/v3.18.0/uppy.min.js"></script>
     <script>
+        const HLS_UPLOAD = {
+            driver: @json(config('hls-videos.upload_driver', 'server')),
+            baseUrl: @json(rtrim(config('hls-videos.uploader_access_url', ''), '/')),
+            partSize: @json((int) config('hls-videos.direct_upload.part_size', 32 * 1024 * 1024)),
+            maxFileSize: @json(
+                config('hls-videos.upload_driver') === 'direct'
+                    ? (int) config('hls-videos.direct_upload.max_file_size', 3 * 1024 * 1024 * 1024)
+                    : 1500 * 1024 * 1024
+            ),
+            headers: {
+                'Accept': 'application/json',
+                'X-CSRF-TOKEN': @json(csrf_token()),
+                'X-tenant': @json(HlsVideos\Services\VideoService::getSubDomain()),
+            },
+        };
+
+        /*
+         * Resume support.
+         *
+         * Uppy's AwsS3Multipart can resume an interrupted upload, but only if it
+         * is handed back the same uploadId -- and it keeps no memory of its own
+         * across a page reload. So the id is parked in localStorage under a
+         * signature of the file, and createMultipartUpload hands it back instead
+         * of starting a fresh upload. listParts then tells Uppy which parts are
+         * already on R2 and it carries on from there.
+         */
+        const HlsResumeStore = {
+            key: 'hls-video-uploads',
+            ttl: 24 * 60 * 60 * 1000,
+
+            signature(file) {
+                const d = file.data;
+                return [d.name, d.size, d.lastModified].join(':');
+            },
+
+            all() {
+                try {
+                    const raw = window.localStorage.getItem(this.key);
+                    const parsed = raw ? JSON.parse(raw) : {};
+                    const now = Date.now();
+
+                    // Drop anything past the bucket's abort window; the uploadId
+                    // is long gone by then and reusing it just 404s.
+                    Object.keys(parsed).forEach((k) => {
+                        if (!parsed[k].at || now - parsed[k].at > this.ttl) delete parsed[k];
+                    });
+
+                    return parsed;
+                } catch (e) {
+                    return {};
+                }
+            },
+
+            get(file) {
+                return this.all()[this.signature(file)] || null;
+            },
+
+            put(file, data) {
+                try {
+                    const all = this.all();
+                    all[this.signature(file)] = Object.assign({ at: Date.now() }, data);
+                    window.localStorage.setItem(this.key, JSON.stringify(all));
+                } catch (e) { /* private mode, quota, etc. -- resume is optional */ }
+            },
+
+            forget(file) {
+                try {
+                    const all = this.all();
+                    delete all[this.signature(file)];
+                    window.localStorage.setItem(this.key, JSON.stringify(all));
+                } catch (e) { /* noop */ }
+            },
+        };
+
+        async function hlsUploadRequest(path, options = {}) {
+            const response = await fetch(HLS_UPLOAD.baseUrl + '/hls/videos/direct/' + path, Object.assign({
+                credentials: 'same-origin',
+                headers: Object.assign({ 'Content-Type': 'application/json' }, HLS_UPLOAD.headers),
+            }, options));
+
+            if (!response.ok) {
+                const text = await response.text();
+                throw new Error('Upload request failed (' + response.status + '): ' + text.slice(0, 200));
+            }
+
+            return response.json();
+        }
+
+        function useDirectUpload() {
+            uppy.use(Uppy.AwsS3Multipart, {
+                // Concurrent parts in flight. Four keeps a fat connection busy
+                // without starving the signing endpoint.
+                limit: 4,
+                retryDelays: [0, 1000, 3000, 5000, 10000],
+
+                // R2 requires every part except the last to be exactly the same
+                // size, so this must be a constant, not a per-file calculation.
+                getChunkSize: () => HLS_UPLOAD.partSize,
+
+                createMultipartUpload: async (file) => {
+                    const resumable = HlsResumeStore.get(file);
+
+                    if (resumable) {
+                        // The stored upload may have been aborted in the
+                        // meantime -- by the cleanup command or the bucket's
+                        // lifecycle rule. Probe it before trusting it, and fall
+                        // through to a fresh upload if it is gone.
+                        try {
+                            videoId = resumable.videoId;
+                            await hlsUploadRequest(resumable.videoId + '/parts', { method: 'GET' });
+
+                            return { uploadId: resumable.uploadId, key: resumable.key };
+                        } catch (e) {
+                            HlsResumeStore.forget(file);
+                            videoId = null;
+                        }
+                    }
+
+                    const meta = uppy.getState().meta || {};
+
+                    const data = await hlsUploadRequest('init', {
+                        method: 'POST',
+                        body: JSON.stringify({
+                            filename: file.name,
+                            size: file.size,
+                            content_type: file.type,
+                            folder_id: meta.folder_id,
+                            model_type: meta.model_type,
+                            model_id: meta.model_id,
+                        }),
+                    });
+
+                    videoId = data.video_id;
+
+                    HlsResumeStore.put(file, {
+                        videoId: data.video_id,
+                        uploadId: data.uploadId,
+                        key: data.key,
+                    });
+
+                    return { uploadId: data.uploadId, key: data.key };
+                },
+
+                // Only the part number crosses the wire. The key and uploadId are
+                // read server-side from the video row, so a tampered client
+                // cannot aim the upload at a different object.
+                signPart: async (file, { partNumber }) => {
+                    const data = await hlsUploadRequest(videoId + '/sign-part', {
+                        method: 'POST',
+                        body: JSON.stringify({ partNumber: partNumber }),
+                    });
+
+                    return { url: data.url };
+                },
+
+                listParts: async () => {
+                    return hlsUploadRequest(videoId + '/parts', { method: 'GET' });
+                },
+
+                completeMultipartUpload: async (file, { parts }) => {
+                    const data = await hlsUploadRequest(videoId + '/complete', {
+                        method: 'POST',
+                        body: JSON.stringify({
+                            parts: parts.map((p) => ({ PartNumber: p.PartNumber, ETag: p.ETag })),
+                        }),
+                    });
+
+                    HlsResumeStore.forget(file);
+
+                    videoId = data.video_id;
+                    setVideoOptionCard(data);
+
+                    return { location: null };
+                },
+
+                abortMultipartUpload: async (file) => {
+                    HlsResumeStore.forget(file);
+
+                    if (!videoId) return;
+
+                    try {
+                        await hlsUploadRequest(videoId + '/abort', { method: 'POST' });
+                    } catch (e) {
+                        // The reconcile command cleans up whatever is left.
+                        console.warn('abort failed', e);
+                    }
+                },
+            });
+        }
+
         let uppy = null;
         let modelType = "{{ $model ? str_replace('\\', '\\\\', get_class($model)) : null }}";
         let modelId = "{{ $model?->id }}";
@@ -792,14 +982,16 @@
             uppy = new Uppy.Uppy({
                 restrictions: {
                     maxNumberOfFiles: 1, // ✅ Allow only one file
-                    maxFileSize: 1500 * 1024 * 1024, // 50MB
+                    maxFileSize: HLS_UPLOAD.maxFileSize,
                     allowedFileTypes: [
                         'video/*' // ✅ Accept ALL video formats
                     ]
                 },
                 autoProceed: false, // Automatically start uploading after the file is selected
-                parallel: true, // Enable parallel uploads of chunks
-                chunkSize: 10 * 1024 * 1024 // 10MB per chunk (can be adjusted)
+                // NOTE: `parallel` and `chunkSize` used to be passed here. Neither
+                // is a real Uppy option, so both were silently ignored and the
+                // whole file went out in a single request. Part size for the
+                // direct driver is set on AwsS3Multipart's getChunkSize below.
             });
 
             // ✅ Remove previous file when a new one is added
@@ -908,24 +1100,20 @@
                 folder_id: folderId,
             });
 
-            // Add XHRUpload plugin for chunk upload handling
-            uppy.use(Uppy.XHRUpload, {
-                endpoint: '{{ config('hls-videos.uploader_access_url') }}/hls/videos/upload', // Your backend endpoint for receiving chunks
-                formData: true,
-                fieldName: 'file',
-                headers: {
-                    'Accept': 'application/json',
-                    'X-CSRF-TOKEN': '{{ csrf_token() }}',
-                    'X-tenant': '{{ HlsVideos\Services\VideoService::getSubDomain() }}',
-                },
-                // You can add custom options for parallelism and retries
-                parallelUploads: 5, // Limit to 5 parallel uploads
-                // Other useful options:
-                bundle: false, // must be false for chunked upload
-                limit: 1, // upload 1 chunk at a time
-                allowMultipleUploads: false
-                // - withCredentials: true (if you need to send credentials with requests)
-            });
+            if (HLS_UPLOAD.driver === 'direct') {
+                useDirectUpload();
+            } else {
+                // Legacy driver: the whole file is POSTed to PHP.
+                uppy.use(Uppy.XHRUpload, {
+                    endpoint: HLS_UPLOAD.baseUrl + '/hls/videos/upload',
+                    formData: true,
+                    fieldName: 'file',
+                    headers: HLS_UPLOAD.headers,
+                    bundle: false,
+                    limit: 1,
+                    allowMultipleUploads: false
+                });
+            }
 
             // ========== إضافة أحداث الرفع ==========
 
@@ -938,8 +1126,13 @@
             });
 
             uppy.on('upload-success', (file, response) => {
-                videoId = response.body.video_id;
-                setVideoOptionCard(response.body);
+                // Under the direct driver the card is already rendered from the
+                // /complete response; there is no PHP response body here.
+                if (HLS_UPLOAD.driver !== 'direct') {
+                    videoId = response.body.video_id;
+                    setVideoOptionCard(response.body);
+                }
+
                 fireVideoUploadCompleteEvent(file, response);
             });
 

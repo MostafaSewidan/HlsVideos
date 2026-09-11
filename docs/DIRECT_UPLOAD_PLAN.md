@@ -132,7 +132,11 @@
 > النتايج على الفرونت:
 > - نداءات التوقيع **cross-origin**، فالكوكيز مابتتبعتش. `config/cors.php` عنده
 >   `supports_credentials = false`، يعني `credentials: 'include'` هيفشل الـ CORS.
->   **لازم `credentials: 'omit'`** في `hlsUploadRequest` — مش `'same-origin'`.
+>   ~~لازم `credentials: 'omit'`~~ — **تصحيح**: `'same-origin'` هي الصح ومتسابة زي
+>   ما هي. المواصفة بتقول إنها بتبعت الكوكيز **بس لو** الرابط same-origin، وبتتصرف
+>   زي `'omit'` لو cross-origin. يعني بتظبط الحالتين لوحدها: هنا (دومين رفع منفصل)
+>   مابتبعتش كوكيز، وفي التثبيتات اللي `uploader_access_url` فيها فاضي والروابط
+>   نسبية بتبعت الكوكيز والمصادقة تشتغل عادي. `'omit'` كانت هتكسر الحالة التانية.
 > - هيدر `X-tenant` لازم يفضل متبعوت في كل نداء (موجود في `HLS_UPLOAD.headers`).
 > - اتضاف `hls/videos/direct/*` لـ `VerifyCsrfToken::$except` و `config/cors.php`
 >   في `base_backend` (زي `hls/videos/upload` بالظبط).
@@ -163,13 +167,13 @@
 
 ## المرحلة 5 — Uppy
 
-- [ ] شيل `parallel` و `chunkSize` و `parallelUploads` (مش خيارات حقيقية).
-- [ ] فرع `AwsS3Multipart` خلف `HLS_UPLOAD.driver === 'direct'`.
-- [ ] `getChunkSize` يرجّع **ثابت** 32 MiB.
-- [ ] `limit: 4` أجزاء متوازية.
-- [ ] استئناف: خزّن `{videoId, uploadId, key}` في `localStorage` بتوقيع `name:size:lastModified`. TTL 24 ساعة يطابق نافذة الـ abort.
-- [ ] قبل ما تثق في رفعة مخزّنة، نادِ `listParts` عليها — ممكن تكون اتلغت من أمر التنظيف أو من الـ lifecycle.
-- [ ] `upload-success` يتعامل مع الحالتين (في الوضع المباشر مفيش `response.body` من PHP).
+- [x] شيل `parallel` و `chunkSize` و `parallelUploads` (مش خيارات حقيقية).
+- [x] فرع `AwsS3Multipart` خلف `HLS_UPLOAD.driver === 'direct'`.
+- [x] `getChunkSize` يرجّع **ثابت** 32 MiB.
+- [x] `limit: 4` أجزاء متوازية.
+- [x] استئناف: خزّن `{videoId, uploadId, key}` في `localStorage` بتوقيع `name:size:lastModified`. TTL 24 ساعة يطابق نافذة الـ abort.
+- [x] قبل ما تثق في رفعة مخزّنة، نادِ `listParts` عليها — ممكن تكون اتلغت من أمر التنظيف أو من الـ lifecycle.
+- [x] `upload-success` يتعامل مع الحالتين (في الوضع المباشر مفيش `response.body` من PHP).
 
 **معيار القبول**: ملف 2 جيجا يرفع، اقطع الشبكة في النص وارجّعها → يكمّل من مكانه. اقفل التاب وافتحه → يستأنف.
 
