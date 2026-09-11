@@ -1,5 +1,6 @@
 <?php
 use Illuminate\Support\Facades\Route;
+use HlsVideos\Http\Controllers\DirectUploadController;
 use HlsVideos\Http\Controllers\HlsVideoController;
 use HlsVideos\Http\Controllers\HlsFolderController;
 use HlsVideos\Http\Controllers\HlsFolderVideoController;
@@ -13,6 +14,28 @@ Route::name('hls.videos.')
         Route::any('upload', [HlsVideoController::class, 'uploadVideo'])->name('upload');
     });
 
+/*
+| Direct-to-R2 signing routes.
+|
+| These hand out write access to the bucket, so unlike the legacy `upload`
+| route above they sit INSIDE the configured access middleware. They also
+| carry their own rate limit: the framework default of 60/minute is lower
+| than the number of parts in a single large upload and would stall it.
+*/
+Route::name('hls.videos.direct.')
+    ->prefix('hls/videos/direct')
+    ->middleware(array_merge(
+        ['web'],
+        $middleware,
+        ['throttle:'.config('hls-videos.direct_upload.throttle', '600,1')]
+    ))
+    ->group(function () {
+        Route::post('init', [DirectUploadController::class, 'init'])->name('init');
+        Route::post('{videoId}/sign-part', [DirectUploadController::class, 'signPart'])->name('sign-part');
+        Route::get('{videoId}/parts', [DirectUploadController::class, 'parts'])->name('parts');
+        Route::post('{videoId}/complete', [DirectUploadController::class, 'complete'])->name('complete');
+        Route::post('{videoId}/abort', [DirectUploadController::class, 'abort'])->name('abort');
+    });
 
 Route::middleware($middleware)->group(function () {
 

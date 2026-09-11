@@ -100,16 +100,45 @@
 
 ## المرحلة 3 — الـ endpoints
 
-- [ ] `DirectUploadController`: `init`, `signPart`, `parts`, `complete`, `abort`.
-- [ ] `InitDirectUploadRequest` مع `safeExtension()` (الامتداد جزء من مسار تخزين — يتنضّف).
-- [ ] الراوتس تحت `hls/videos/direct` **جوه** `uploader_access_middleware`. لاحظ إن راوت `upload` القديم بره المجموعة دي و `authorize()` بيرجّع `true` — ثغرة قائمة، ومتكرّرهاش في راوتس التوقيع لأنها بتدي حق كتابة على البكت.
-- [ ] `throttle` مخصص (600/دقيقة). الافتراضي 60 **هيكسر الرفع**: ملف 2 جيجا بأجزاء 32 ميجا = 64 نداء توقيع بسرعة.
-- [ ] الخدمة تتحل lazily مش injection في الـ constructor — الـ constructor بيرمي استثناء لو الـ disk مش S3، والراوتس مسجّلة حتى على التثبيتات اللي بالمسار القديم (لازم 404 مش 500).
-- [ ] `assertOwnedKey()`: الـ key لازم يبدأ ببادئة المستأجر الحالي. حزام وحمالة فوق عزل قواعد البيانات.
+- [x] `DirectUploadController`: `init`, `signPart`, `parts`, `complete`, `abort`.
+- [x] `InitDirectUploadRequest` مع `safeExtension()` (الامتداد جزء من مسار تخزين — يتنضّف).
+- [x] الراوتس تحت `hls/videos/direct` **جوه** `uploader_access_middleware`. لاحظ إن راوت `upload` القديم بره المجموعة دي و `authorize()` بيرجّع `true` — ثغرة قائمة، ومتكرّرهاش في راوتس التوقيع لأنها بتدي حق كتابة على البكت.
+- [x] `throttle` مخصص (600/دقيقة). الافتراضي 60 **هيكسر الرفع**: ملف 2 جيجا بأجزاء 32 ميجا = 64 نداء توقيع بسرعة.
+- [x] الخدمة تتحل lazily مش injection في الـ constructor — الـ constructor بيرمي استثناء لو الـ disk مش S3، والراوتس مسجّلة حتى على التثبيتات اللي بالمسار القديم (لازم 404 مش 500).
+- [x] `assertOwnedKey()`: الـ key لازم يبدأ ببادئة المستأجر الحالي. حزام وحمالة فوق عزل قواعد البيانات.
 
 **معيار القبول**: `init` بيرجّع `uploadId`، و `sign-part` بـ `partNumber = 0` أو `10001` بيرجّع 422، و `sign-part` على فيديو حالته `uploaded` بيرجّع 409.
 
 ---
+
+
+> ### ⚠️ معمارية دومين الرفع (اتكشفت وقت المرحلة 3)
+>
+> `HLS_VIDEO_UPLOADER_ACCESS_URL = https://upload.steps.test` — دومين **مشترك** منفصل
+> عن subdomain المستأجر. `SubDomainTenantFinder` بيحدد المستأجر هناك من هيدر
+> `X-tenant` بشرط إن الـ `Origin` يكون في `multitenancy.accepted_uploader_origins`.
+>
+> النتايج على الفرونت:
+> - نداءات التوقيع **cross-origin**، فالكوكيز مابتتبعتش. `config/cors.php` عنده
+>   `supports_credentials = false`، يعني `credentials: 'include'` هيفشل الـ CORS.
+>   **لازم `credentials: 'omit'`** في `hlsUploadRequest` — مش `'same-origin'`.
+> - هيدر `X-tenant` لازم يفضل متبعوت في كل نداء (موجود في `HLS_UPLOAD.headers`).
+> - اتضاف `hls/videos/direct/*` لـ `VerifyCsrfToken::$except` و `config/cors.php`
+>   في `base_backend` (زي `hls/videos/upload` بالظبط).
+> - الـ `PUT` لـ R2 نفسه بيطلع من **origin صفحة المستأجر** مش من `upload.*`،
+>   فسؤال الـ wildcard في CORS بتاع R2 لسه قايم. والدومينات الجذر أكتر من واحد:
+>   `stepsio.com` و `taaleemhub.app` و `steps.test`.
+>
+> ### ⚠️ مفيش مصادقة على دومين الرفع
+>
+> `HLS_VIDEO_UPLOADER_ACCESS_MIDDLEWARE=""` — فاضي. البوابة الوحيدة هي فحص
+> الـ `Origin` جوه `SubDomainTenantFinder`، وده مايتزوّرش من متصفح لكن يتزوّر
+> من curl. ده وضع **قائم من قبل المشروع ده** (راوت `upload` القديم مكشوف بنفس
+> الشكل)، بس الـ endpoints الجديدة بتدي روابط كتابة مباشرة على البكت فالأثر أكبر.
+> المدى: مستخدم غير مصادق يقدر يعمل صفوف فيديو ويرفع ملفات جوه بادئة المستأجر —
+> إساءة استخدام وتكلفة تخزين، مش تسريب بيانات. الحل المقترح: صفحة المستأجر
+> (المصادَق عليها) تولّد توكن قصير العمر، و`init` يتحقق منه عبر
+> `direct_upload.authorize`.
 
 ## المرحلة 4 — إعداد البكت
 
