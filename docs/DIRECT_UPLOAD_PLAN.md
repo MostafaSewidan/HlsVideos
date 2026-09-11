@@ -62,8 +62,8 @@
 - [ ] **اختبار wildcard في CORS**: جرّب `https://*.example.com` في `AllowedOrigins` بملف صغير. توثيق R2 بيقول "مطابقة تامة" ومابيذكرش wildcard.
       - لو اشتغل → خلصنا.
       - لو مااشتغلش → قرار معماري: إما أتمتة إضافة origin لكل مستأجر جديد، أو تحميل واجهة الرفع في `iframe` من دومين واحد ثابت. **ده بيغيّر شكل الواجهة، فلازم يتحسم دلوقتي.**
-- [ ] **نسخة `aws/aws-sdk-php`**: `composer show aws/aws-sdk-php`. النسخ الحديثة بتضيف `x-amz-checksum-*` افتراضياً وبتكسّر الروابط الموقّعة لأن المتصفح مابيبعتش الهيدر. العلاج: `request_checksum_calculation => 'when_required'`.
-- [ ] **إعداد disk الـ `r2`** في `config/filesystems.php` موجود وفيه `endpoint` و `bucket` و `use_path_style_endpoint`.
+- [x] **نسخة `aws/aws-sdk-php`**: `composer show aws/aws-sdk-php`. النسخ الحديثة بتضيف `x-amz-checksum-*` افتراضياً وبتكسّر الروابط الموقّعة لأن المتصفح مابيبعتش الهيدر. العلاج: `request_checksum_calculation => 'when_required'`.
+- [x] **إعداد disk الـ `r2`** في `config/filesystems.php` موجود وفيه `endpoint` و `bucket` و `use_path_style_endpoint`.
 
 **معيار القبول**: عارف منطقة البكت، وعارف إذا كان الـ wildcard شغال ولا لأ، وعارف نسخة الـ SDK.
 
@@ -89,10 +89,10 @@
 
 ## المرحلة 2 — خدمة التوقيع
 
-- [ ] `DirectUploadService`: `createMultipartUpload`, `signPart`, `listParts`, `completeMultipartUpload`, `abortMultipartUpload`, `headObject`.
-- [ ] بناء `S3Client` **من إعداد الـ disk مباشرة**، مش من Flysystem adapter — طريقة الوصول للـ adapter مختلفة بين Laravel 8 (Flysystem 1) و Laravel 9+ (Flysystem 3) والباكدج بتدعم الاتنين.
-- [ ] `try/catch` حوالين `request_checksum_calculation` (النسخ القديمة من الـ SDK بترفض الخيار).
-- [ ] في `signPart`: **ما تحطش** `Body` ولا `ContentLength` — لو اتحطوا هيدخلوا في التوقيع والمتصفح بيبعت بتوعه.
+- [x] `DirectUploadService`: `createMultipartUpload`, `signPart`, `listParts`, `completeMultipartUpload`, `abortMultipartUpload`, `headObject`.
+- [x] بناء `S3Client` **من إعداد الـ disk مباشرة**، مش من Flysystem adapter — طريقة الوصول للـ adapter مختلفة بين Laravel 8 (Flysystem 1) و Laravel 9+ (Flysystem 3) والباكدج بتدعم الاتنين.
+- [x] `try/catch` حوالين `request_checksum_calculation` (النسخ القديمة من الـ SDK بترفض الخيار).
+- [x] في `signPart`: **ما تحطش** `Body` ولا `ContentLength` — لو اتحطوا هيدخلوا في التوقيع والمتصفح بيبعت بتوعه.
 
 **معيار القبول**: `tinker` → توقيع جزء → `curl -X PUT --upload-file` عليه → 200 ومعاه ETag.
 
