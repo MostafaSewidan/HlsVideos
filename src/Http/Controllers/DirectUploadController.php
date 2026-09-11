@@ -57,22 +57,30 @@ class DirectUploadController extends Controller
             );
         });
 
+        $uploadId = null;
+
         try {
             $uploadId = $this->uploads()->createMultipartUpload(
                 $video->original_key,
                 $request->input('content_type') ?: 'video/mp4'
             );
+
+            // Persisting the id belongs inside the try: if this write fails the
+            // upload already exists on R2 with nothing pointing at it, so it has
+            // to be aborted here rather than left for the lifecycle rule.
+            $video->forceFill(['r2_upload_id' => $uploadId])->save();
+
         } catch (\Throwable $e) {
-            // No upload to abort yet -- drop the orphan row instead of leaving
-            // it for the reconcile command to puzzle over.
+            if ($uploadId) {
+                $this->uploads()->abortMultipartUpload($video->original_key, $uploadId);
+            }
+
             $video->forceFill(['status' => HlsVideo::UPLOAD_FAILED])->save();
 
             \Log::error("createMultipartUpload failed for video {$video->id}: ".$e->getMessage());
 
             return response()->json(['message' => 'تعذّر بدء الرفع، حاول مرة أخرى.'], 500);
         }
-
-        $video->forceFill(['r2_upload_id' => $uploadId])->save();
 
         return response()->json([
             'video_id' => $video->id,

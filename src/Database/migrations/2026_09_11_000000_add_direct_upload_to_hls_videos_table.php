@@ -36,7 +36,7 @@ return new class extends Migration
             }
 
             if (! Schema::hasColumn('hls_videos', 'r2_upload_id')) {
-                $table->string('r2_upload_id', 255)->nullable()->after('r2_key');
+                $table->text('r2_upload_id')->nullable()->after('r2_key');
             }
 
             if (! Schema::hasColumn('hls_videos', 'upload_size')) {

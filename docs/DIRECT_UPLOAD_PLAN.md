@@ -59,9 +59,13 @@
 ## المرحلة 0 — فحوصات (قبل أي كود)
 
 - [ ] **موقع بكت R2 الفعلي**: `npx wrangler r2 bucket info <BUCKET>`. البكت متعلم `auto` وده ساعات بيقع في أمريكا الشمالية. لو طلع ENAM/WNAM → ميزة Local Uploads هتفرق كتير مع طلاب مصر (المرحلة 9).
-- [ ] **اختبار wildcard في CORS**: جرّب `https://*.example.com` في `AllowedOrigins` بملف صغير. توثيق R2 بيقول "مطابقة تامة" ومابيذكرش wildcard.
-      - لو اشتغل → خلصنا.
-      - لو مااشتغلش → قرار معماري: إما أتمتة إضافة origin لكل مستأجر جديد، أو تحميل واجهة الرفع في `iframe` من دومين واحد ثابت. **ده بيغيّر شكل الواجهة، فلازم يتحسم دلوقتي.**
+- [x] **اختبار wildcard في CORS**: ✅ **R2 بيدعم wildcard في `AllowedOrigins`** رغم إن
+      التوثيق مابيذكرهوش. سياسة بـ `https://*.stepsio.com` و `https://*.steps.test`
+      اتقبلت واتحفظت. **يعني مفيش حاجة اسمها iframe، والواجهة تفضل على subdomain
+      كل مستأجر زي ما هي.**
+      - ⚠️ ومطب اتكشف وقت التجربة: السياسة الموجودة كانت `AllowedMethods: ["GET","HEAD"]`
+        من غير `PUT`. كل أجزاء الرفع PUT موقّع، فالـ preflight بيترفض قبل ما أي بايت
+        يخرج. لازم `"PUT"` تكون في القايمة.
 - [x] **نسخة `aws/aws-sdk-php`**: `composer show aws/aws-sdk-php`. النسخ الحديثة بتضيف `x-amz-checksum-*` افتراضياً وبتكسّر الروابط الموقّعة لأن المتصفح مابيبعتش الهيدر. العلاج: `request_checksum_calculation => 'when_required'`.
 - [x] **إعداد disk الـ `r2`** في `config/filesystems.php` موجود وفيه `endpoint` و `bucket` و `use_path_style_endpoint`.
 
