@@ -73,15 +73,15 @@
 
 من غير المرحلة دي، أي endpoint هنكتبه هيدفع فيديوهات فاضية للترميز.
 
-- [ ] `config/hls-videos.php`: إضافة `upload_driver`, `uploaded_videos_disk`, `temp_videos_prefix`, وبلوك `direct_upload`. **وكمان** `uploader_access_url` و `local_server_password` — الاتنين مستخدمين في الكود ومش معرّفين في الـ config.
-- [ ] Migration:
+- [x] `config/hls-videos.php`: إضافة `upload_driver`, `uploaded_videos_disk`, `temp_videos_prefix`, وبلوك `direct_upload`. **وكمان** `uploader_access_url` و `local_server_password` — الاتنين مستخدمين في الكود ومش معرّفين في الـ config.
+- [x] Migration:
       - `status` من `ENUM` لـ `VARCHAR(20)` بـ `DB::statement` خام (مش `->change()`: doctrine/dbal مابيعرفش يقرا ENUM). الافتراضي يفضل `'uploaded'`.
       - أعمدة: `r2_key`, `r2_upload_id`, `upload_size`, `upload_started_at`.
       - index على `(status, upload_started_at)` للأمر بتاع المصالحة.
-- [ ] `HlsVideo`: ثابتين `PENDING_UPLOAD` و `UPLOAD_FAILED`، cast لـ `upload_started_at`, scope `pendingUpload`, accessor `original_key`.
-- [ ] **حراسة الـ `created` hook**: لو الحالة `PENDING_UPLOAD` → نادِ `protectVideo` بس وارجع. المسار القديم يمر من نفس الفرع بنفس الترتيب الأصلي بالظبط.
-- [ ] `VideoService`: `originalKey()`, `tenantOriginalPrefix()`, `startProcessing()` (idempotent), `createPendingVideo()`.
-- [ ] إصلاح الـ `deleting` hook: الأصل تحت بادئة `temp-videos/` ومش بيتمسح حالياً — تسريب تخزين موجود من قبل المشروع ده.
+- [x] `HlsVideo`: ثابتين `PENDING_UPLOAD` و `UPLOAD_FAILED`، cast لـ `upload_started_at`, scope `pendingUpload`, accessor `original_key`.
+- [x] **حراسة الـ `created` hook**: لو الحالة `PENDING_UPLOAD` → نادِ `protectVideo` بس وارجع. المسار القديم يمر من نفس الفرع بنفس الترتيب الأصلي بالظبط.
+- [x] `VideoService`: `originalKey()`, `tenantOriginalPrefix()`, `startProcessing()` (idempotent), `createPendingVideo()`.
+- [x] إصلاح الـ `deleting` hook: الأصل تحت بادئة `temp-videos/` ومش بيتمسح حالياً — تسريب تخزين موجود من قبل المشروع ده.
 
 **معيار القبول**: `HlsVideo::create(['status' => 'pending_upload', ...])` مابيعملش أي صف في `hls_video_qualities` ومابيناديش ffmpeg. والمسار القديم لسه بيعمل صورة ومدة وبيبدأ الترميز زي ما هو.
 
