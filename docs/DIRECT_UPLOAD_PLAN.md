@@ -94,7 +94,18 @@
 - [x] `try/catch` حوالين `request_checksum_calculation` (النسخ القديمة من الـ SDK بترفض الخيار).
 - [x] في `signPart`: **ما تحطش** `Body` ولا `ContentLength` — لو اتحطوا هيدخلوا في التوقيع والمتصفح بيبعت بتوعه.
 
-**معيار القبول**: `tinker` → توقيع جزء → `curl -X PUT --upload-file` عليه → 200 ومعاه ETag.
+**معيار القبول**: ✅ تم التحقق — `200` + `ETag: "3349dc700140d7f86a078484278075a9"` على جزء 6 MiB.
+الرابط الموقّع طلع `X-Amz-SignedHeaders=host` وبس، يعني مطب الـ checksum بتاع
+`aws-sdk-php 3.394.12` اتفادى فعلاً.
+
+> **مطب في الاختبار**: ما تختبرش الروابط الموقّعة بـ `curl` من الـ shell. zsh بيضيف
+> `\` قبل `?` و `&` و `=` وقت اللصق، وجوه علامات التنصيص المزدوجة الـ backslash
+> **بيفضل موجود** — فالرابط يوصل مكسور و R2 يرد `400` مضلّل. اختبر من جوه tinker:
+>
+> ```php
+> $res = (new GuzzleHttp\Client())->put($url, ['body' => str_repeat('x', 6*1024*1024), 'http_errors' => false]);
+> echo $res->getStatusCode() . ' ' . $res->getHeaderLine('ETag');
+> ```
 
 ---
 
