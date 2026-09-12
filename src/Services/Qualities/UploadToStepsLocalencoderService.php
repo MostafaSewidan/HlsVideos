@@ -33,27 +33,6 @@ class UploadToStepsLocalencoderService implements VideoQualityProcessorInterface
             'stream_data' => $stream_data
         ]);
 
-        $sourcePath = VideoService::getMediaPath()."{$this->video->id}/{$this->video->file_name}";
-        $destinationPath = "temp-videos/".VideoService::getMediaPath()."{$this->video->id}/{$this->video->file_name}";
-        $localDisk = \Storage::disk(config('hls-videos.temp_disk'));
-
-        if (! $localDisk->exists($sourcePath)) {
-            throw new \Exception("Video file not found at path: {$sourcePath}");
-        }
-
-        $s3Disk = \Storage::disk(config('hls-videos.uploaded_videos_disk'));  // R2 / S3
-
-        $stream = $localDisk->readStream($sourcePath);
-
-        $s3Disk->put($destinationPath, $stream);
-
-        if (is_resource($stream)) {
-            fclose($stream);
-        }
-
-        // Optional: delete local file after upload
-        $localDisk->deleteDirectory(VideoService::getMediaPath()."{$this->video->id}");
-
         $client = new \GuzzleHttp\Client();
 
         try {

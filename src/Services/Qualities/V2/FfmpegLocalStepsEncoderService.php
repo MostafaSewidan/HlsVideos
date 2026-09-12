@@ -25,6 +25,7 @@ class FfmpegLocalStepsEncoderService
     public function convertVideo($videoFile, HlsVideo $video)
     {
         // try {
+        $videoSerivce = new VideoService();
         $this->video = $video;
         AppHlsVideoQuality::where('hls_video_id', $this->video->id)->delete();
 
@@ -48,6 +49,12 @@ class FfmpegLocalStepsEncoderService
 
         $this->saveVideoOrientationType();
 
+
+
+        $videoSerivce->createThumb($this->video);
+        $videoSerivce->getVideoDuration($this->video);
+        $videoSerivce->protectVideo($this->video);
+        $this->video->refresh();
         $transcode = FFMpeg::fromDisk(config('hls-videos.temp_disk'))
             ->open($this->video->temp_video_path)
             ->exportForHLS()
