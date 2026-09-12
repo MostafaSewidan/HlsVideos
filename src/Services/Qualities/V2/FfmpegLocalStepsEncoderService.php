@@ -53,7 +53,6 @@ class FfmpegLocalStepsEncoderService
 
         $videoSerivce->createThumb($this->video);
         $videoSerivce->getVideoDuration($this->video);
-        $videoSerivce->protectVideo($this->video);
         $this->video->refresh();
         $transcode = FFMpeg::fromDisk(config('hls-videos.temp_disk'))
             ->open($this->video->temp_video_path)
