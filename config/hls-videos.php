@@ -63,6 +63,21 @@ return [
 
     'direct_upload' => [
 
+        /*
+        | Base URL for the five signing endpoints. Empty means "same origin as
+        | the page", which is almost always what you want:
+        |
+        |   - the browser sends the session cookie, so route middleware such as
+        |     auth: works normally
+        |   - no CORS entry and no CSRF exemption are needed
+        |   - the tenant resolves from the subdomain like every other request
+        |
+        | The separate upload host that `uploader_access_url` points at exists
+        | because whole video files used to be POSTed to PHP. These calls are a
+        | few hundred bytes of JSON, so they have no reason to leave the origin.
+        */
+        'base_url' => env("HLS_VIDEO_DIRECT_BASE_URL", ''),
+
         // Fixed size for every part except the last one. R2 requires all parts
         // to be equal in size, minimum 5 MiB, maximum 10,000 parts.
         'part_size' => (int) env("HLS_VIDEO_PART_SIZE", 32 * 1024 * 1024),

@@ -774,7 +774,8 @@
     <script>
         const HLS_UPLOAD = {
             driver: @json(config('hls-videos.upload_driver', 'server')),
-            baseUrl: @json(rtrim(config('hls-videos.uploader_access_url', ''), '/')),
+            baseUrl: @json(rtrim(config('hls-videos.direct_upload.base_url', ''), '/')),
+            legacyBaseUrl: @json(rtrim(config('hls-videos.uploader_access_url', ''), '/')),
             partSize: @json((int) config('hls-videos.direct_upload.part_size', 32 * 1024 * 1024)),
             maxFileSize: @json(
                 config('hls-videos.upload_driver') === 'direct'
@@ -1105,7 +1106,7 @@
             } else {
                 // Legacy driver: the whole file is POSTed to PHP.
                 uppy.use(Uppy.XHRUpload, {
-                    endpoint: HLS_UPLOAD.baseUrl + '/hls/videos/upload',
+                    endpoint: HLS_UPLOAD.legacyBaseUrl + '/hls/videos/upload',
                     formData: true,
                     fieldName: 'file',
                     headers: HLS_UPLOAD.headers,
