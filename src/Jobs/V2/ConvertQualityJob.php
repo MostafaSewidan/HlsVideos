@@ -34,24 +34,26 @@ class ConvertQualityJob implements ShouldQueue
             $service = new FfmpegLocalStepsEncoderService;
             $service->convertVideo('', $this->video);
         } catch (\Throwable $e) {
-            Event::dispatch(new VideoConvertedErrorEvent($this->video, app('currentTenant'), $e->getMessage()));
             Log::error('ConvertQualityJob failed', [
                 'video_id' => $this->video->id,
                 'message' => $e->getMessage(),
                 'trace' => $e->getTraceAsString(),
             ]);
+            Event::dispatch(new VideoConvertedErrorEvent($this->video, app('currentTenant'), $e->getMessage()));
+
             throw $e;
         }
     }
 
     public function failed(\Throwable $e): void
     {
-        Event::dispatch(new VideoConvertedErrorEvent($this->video, app('currentTenant'), $e->getMessage()));
-
         Log::error('ConvertQualityJob permanently failed after retries', [
             'video_id' => $this->video->id,
             'message' => $e->getMessage(),
         ]);
+        $this->tenant->makeCurrent();
+        Event::dispatch(new VideoConvertedErrorEvent($this->video, app('currentTenant'), $e->getMessage()));
+
         // Optionally: update $this->video status, notify, etc.
     }
 }
