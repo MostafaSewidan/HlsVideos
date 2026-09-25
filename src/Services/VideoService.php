@@ -49,6 +49,41 @@ class VideoService
         }
     }
 
+    /**
+     * Applies metadata probed elsewhere (the encoder node, which already holds
+     * the file and has ffmpeg) to a video uploaded straight to R2.
+     *
+     * Writes the thumbnail to exactly the path and disk createThumb() uses, so
+     * HlsVideo::getThumbUrlAttribute keeps working untouched.
+     *
+     * @param  string|null  $thumbContents  raw JPEG bytes
+     */
+    public function applyProbedMetadata(HlsVideo $video, array $metadata, ?string $thumbContents = null): void
+    {
+        $stream = $video->stream_data ?? [];
+
+        foreach (['duration', 'width', 'height'] as $field) {
+            if (isset($metadata[$field])) {
+                $stream[$field] = $metadata[$field];
+            }
+        }
+
+        if ($thumbContents !== null && config('hls-videos.take_thumbnail', true)) {
+            try {
+                Storage::disk(config('hls-videos.thumb_disk'))->put(
+                    VideoService::getMediaPath()."$video->id/thumb.jpg",
+                    $thumbContents
+                );
+
+                $stream['thumb_disk'] = config('hls-videos.thumb_disk');
+            } catch (\Exception $e) {
+                \Log::warning("Could not store probed thumbnail for video {$video->id}: ".$e->getMessage());
+            }
+        }
+
+        $video->update(['stream_data' => $stream]);
+    }
+
     public function protectVideo(HlsVideo $video)
     {
         try {
@@ -64,6 +99,48 @@ class VideoService
     static function getMediaPath()
     {
         return app('currentTenant')->media_folder.'/';
+    }
+
+    /**
+     * Single source of truth for where the ORIGINAL video file lives on the
+     * remote disk. Built server side from the video row -- never from request
+     * input -- so a client cannot steer a signed upload at an arbitrary path.
+     *
+     * Shape: {prefix}/{tenant->media_folder}/{video_id}/{file_name}
+     * which is exactly the layout the encoder nodes already expect.
+     */
+    static function originalKey($video): string
+    {
+        $prefix = trim(config('hls-videos.temp_videos_prefix', 'temp-videos'), '/');
+
+        return $prefix.'/'.self::getMediaPath()."{$video->id}/{$video->file_name}";
+    }
+
+    /**
+     * Prefix every original of the current tenant must sit under. Used as a
+     * belt-and-braces check on top of per-tenant database isolation.
+     */
+    static function tenantOriginalPrefix(): string
+    {
+        $prefix = trim(config('hls-videos.temp_videos_prefix', 'temp-videos'), '/');
+
+        return $prefix.'/'.self::getMediaPath();
+    }
+
+    /**
+     * Kicks off transcoding. Split out of the HlsVideo::created hook so that a
+     * row can exist -- and own a key -- before its file has been uploaded.
+     * Idempotent: a video that already has qualities is left alone.
+     */
+    public function startProcessing($video): bool
+    {
+        if ($video->qualities()->exists()) {
+            return false;
+        }
+
+        $this->handleVideoQualities($video);
+
+        return true;
     }
 
     static function getSubDomain()
@@ -150,6 +227,55 @@ class VideoService
 
         $folder = HlsFolder::find($folderId)
             ?? config('hls-videos.repositories.hls_folder')::mainSharedFolders(HlsFolder::query())->first();
+        if ($folder) {
+            $folder->videos()->attach(
+                $video->id,
+                ['title' => $video->original_file_name]
+            );
+        }
+
+        return $video;
+    }
+
+    /**
+     * Creates the video row BEFORE any bytes are uploaded, so that the id --
+     * and therefore the storage key -- exists at signing time.
+     *
+     * Mirrors handlingUploadedFile()'s model/folder attachment so both upload
+     * drivers produce identical rows. The PENDING_UPLOAD status is what stops
+     * the created hook from starting the encoder on an empty file.
+     */
+    public function createPendingVideo(
+        string $originalFileName,
+        string $extension,
+        $model = null,
+        $folderId = null,
+        ?int $size = null
+    ): HlsVideo {
+
+        $extension = ltrim(strtolower($extension), '.');
+        $videoId = $this->createUniqueVideoUuid();
+
+        $video = HlsVideo::create([
+            'id' => $videoId,
+            'status' => HlsVideo::PENDING_UPLOAD,
+            'file_name' => "vd.$extension",
+            'original_extension' => $extension,
+            'original_file_name' => $originalFileName,
+            'upload_size' => $size,
+            'upload_started_at' => now(),
+        ]);
+
+        // Key depends on file_name, which is only known once the row exists.
+        $video->forceFill(['r2_key' => self::originalKey($video)])->save();
+
+        if ($model) {
+            $model->hlsVideos()->attach([$video->id]);
+        }
+
+        $folder = HlsFolder::find($folderId)
+            ?? config('hls-videos.repositories.hls_folder')::mainSharedFolders(HlsFolder::query())->first();
+
         if ($folder) {
             $folder->videos()->attach(
                 $video->id,

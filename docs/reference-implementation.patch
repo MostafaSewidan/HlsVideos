@@ -1,0 +1,1782 @@
+From 42343ef2788959a9ae27c8a9c1767ef3b0145f23 Mon Sep 17 00:00:00 2001
+From: claude <noreply@anthropic.com>
+Date: Fri, 11 Sep 2026 17:39:51 +0000
+Subject: [PATCH] direct upload
+
+---
+ composer.json                                 |   3 +
+ config/hls-videos.php                         |  72 ++++-
+ docs/DIRECT_UPLOAD.md                         | 151 ++++++++++
+ .../ReconcileDirectUploadsCommand.php         | 136 +++++++++
+ ..._add_direct_upload_to_hls_videos_table.php |  82 ++++++
+ .../Controllers/DirectUploadController.php    | 260 ++++++++++++++++++
+ src/Http/Controllers/HlsVideoController.php   |  58 ++++
+ src/Http/Requests/InitDirectUploadRequest.php |  61 ++++
+ src/Models/HlsVideo.php                       |  47 +++-
+ src/Providers/HlsVideoServiceProvider.php     |   7 +
+ src/Routes/web.php                            |  24 ++
+ src/Services/DirectUploadService.php          | 209 ++++++++++++++
+ .../UploadToStepsLocalencoderService.php      |  29 +-
+ src/Services/VideoService.php                 | 126 +++++++++
+ .../components/hls-video-maneger.blade.php    | 239 ++++++++++++++--
+ 15 files changed, 1468 insertions(+), 36 deletions(-)
+ create mode 100644 docs/DIRECT_UPLOAD.md
+ create mode 100644 src/Console/Commands/ReconcileDirectUploadsCommand.php
+ create mode 100644 src/Database/migrations/2026_09_11_000000_add_direct_upload_to_hls_videos_table.php
+ create mode 100644 src/Http/Controllers/DirectUploadController.php
+ create mode 100644 src/Http/Requests/InitDirectUploadRequest.php
+ create mode 100644 src/Services/DirectUploadService.php
+
+diff --git a/composer.json b/composer.json
+index 6c73adc..b169450 100644
+--- a/composer.json
++++ b/composer.json
+@@ -21,6 +21,9 @@
+     "pbmedia/laravel-ffmpeg": "^7.8",
+     "pion/laravel-chunk-upload": "^1.5"
+   },
++  "suggest": {
++    "aws/aws-sdk-php": "Required when hls-videos.upload_driver is set to \"direct\" (already installed transitively by league/flysystem-aws-s3-v3)."
++  },
+   "minimum-stability": "dev",
+   "prefer-stable": true
+ }
+diff --git a/config/hls-videos.php b/config/hls-videos.php
+index d4bae75..1b1a033 100644
+--- a/config/hls-videos.php
++++ b/config/hls-videos.php
+@@ -7,18 +7,88 @@ use HlsVideos\Services\Storages\R2StorageService;
+ return [
+     'access_route_stream' => 'dashboard.video.stream',
+     'uploader_access_middleware' => [],
++    'uploader_access_url' => env('HLS_VIDEO_UPLOADER_ACCESS_URL', ''),
+     'video_folder_middleware' => [],
+     'mp4_to_token' => env("HLS_VIDEO_MP4_TO_TOKEN"),
+     'temp_disk' => env("HLS_VIDEO_TEMP_DISK", 'temp_video'),
+     'thumb_disk' => env("HLS_VIDEO_THUMB_DISK", 'thumbnails'),
+     'stream_disk' => env("HLS_VIDEO_STREAM_DISK", 'r2'),
++
++    /*
++    |--------------------------------------------------------------------------
++    | Disk that holds the ORIGINAL (pre-transcode) video file
++    |--------------------------------------------------------------------------
++    | Referenced by UploadToStepsLocalencoderService and by the direct upload
++    | flow. Must be an S3-compatible disk (R2) when upload_driver is "direct".
++    */
++    'uploaded_videos_disk' => env("HLS_VIDEO_UPLOADED_DISK", 'r2'),
++
++    /*
++    |--------------------------------------------------------------------------
++    | Prefix under which original videos are stored on the remote disk
++    |--------------------------------------------------------------------------
++    | Final key => {prefix}/{tenant->media_folder}/{video_id}/{file_name}
++    | Do NOT change on an existing installation: already-uploaded originals
++    | live under the old prefix.
++    */
++    'temp_videos_prefix' => env("HLS_VIDEO_TEMP_PREFIX", 'temp-videos'),
++
+     'video_player_optionstatus' => true,
+     'repositories' => [
+         'hls_folder' => HlsFolderRepository::class
+     ],
+     'steps_encoder_token' => env("HLS_VIDEO_STEPS_ENCODER_TOKEN"),
++    'local_server_password' => env("HLS_VIDEO_LOCAL_SERVER_PASSWORD"),
+     'steps_encoder_urls' => [],
+     'tenant_model' => null,
++    'convert_quality_queue_name' => env("HLS_VIDEO_CONVERT_QUEUE", 'default'),
++
++    /*
++    |--------------------------------------------------------------------------
++    | Upload driver
++    |--------------------------------------------------------------------------
++    | "server" (default) -> legacy behaviour. The browser POSTs the whole file
++    |                       to PHP, which stores it locally, extracts thumb and
++    |                       duration, then streams it up to the remote disk.
++    |
++    | "direct"           -> the browser uploads straight to R2 using a signed
++    |                       S3 multipart upload. The file never touches PHP.
++    |                       Thumbnail and duration are supplied later by the
++    |                       encoder node (see docs/DIRECT_UPLOAD.md).
++    |
++    | Nothing about the "server" path changes when this is left at its default,
++    | so existing installations are unaffected.
++    */
++    'upload_driver' => env("HLS_VIDEO_UPLOAD_DRIVER", 'server'),
++
++    'direct_upload' => [
++
++        // Fixed size for every part except the last one. R2 requires all parts
++        // to be equal in size, minimum 5 MiB, maximum 10,000 parts.
++        'part_size' => (int) env("HLS_VIDEO_PART_SIZE", 32 * 1024 * 1024),
++
++        // Hard ceiling enforced both in the browser and in /init.
++        'max_file_size' => (int) env("HLS_VIDEO_MAX_FILE_SIZE", 3 * 1024 * 1024 * 1024),
++
++        // Lifetime of each presigned UploadPart URL.
++        'url_ttl_minutes' => (int) env("HLS_VIDEO_URL_TTL", 30),
++
++        // Rate limit applied to the signing routes. The Laravel default of
++        // 60/minute WILL break large uploads.
++        'throttle' => env("HLS_VIDEO_UPLOAD_THROTTLE", '600,1'),
++
++        // A pending upload older than this is probed with HeadObject: present
++        // on R2 -> completed, absent -> left alone until abort_after_hours.
++        'reconcile_after_minutes' => (int) env("HLS_VIDEO_RECONCILE_AFTER", 15),
++
++        // A pending upload older than this is aborted and marked failed.
++        'abort_after_hours' => (int) env("HLS_VIDEO_ABORT_AFTER", 24),
++
++        // Optional authorization hook, called as fn($request, $folderId): bool
++        // before a new upload is initialised. e.g. [Policy::class, 'canUpload']
++        'authorize' => null,
++    ],
++
+     'storages' => [
+         'r2' => [
+             'disk_name' => 'r2',
+@@ -31,4 +101,4 @@ return [
+             'convert_service' => Mp4ToService::class
+         ]
+     ]
+-];
+\ No newline at end of file
++];
+diff --git a/docs/DIRECT_UPLOAD.md b/docs/DIRECT_UPLOAD.md
+new file mode 100644
+index 0000000..68a0c91
+--- /dev/null
++++ b/docs/DIRECT_UPLOAD.md
+@@ -0,0 +1,151 @@
++# الرفع المباشر إلى R2 (direct upload)
++
++رفع الفيديو من المتصفح إلى Cloudflare R2 مباشرةً، من غير ما الملف يعدّي على PHP.
++
++المسار القديم (`upload_driver = server`) **مافيهوش أي تغيير** وهو الافتراضي، فالمشاريع التانية اللي بتستخدم الباكدج مش هتتأثر بالترقية.
++
++---
++
++## 1. المفتاح
++
++```env
++HLS_VIDEO_UPLOAD_DRIVER=direct     # الافتراضي: server
++```
++
++| المفتاح | الافتراضي | الوصف |
++|---|---|---|
++| `HLS_VIDEO_UPLOAD_DRIVER` | `server` | `server` \| `direct` |
++| `HLS_VIDEO_UPLOADED_DISK` | `r2` | قرص S3 المتوافق اللي بيتخزّن عليه الأصل |
++| `HLS_VIDEO_TEMP_PREFIX` | `temp-videos` | **لا تغيّره على تثبيت قائم** |
++| `HLS_VIDEO_PART_SIZE` | `33554432` (32 MiB) | حجم الجزء الثابت |
++| `HLS_VIDEO_MAX_FILE_SIZE` | `3221225472` (3 GiB) | السقف |
++| `HLS_VIDEO_URL_TTL` | `30` | صلاحية رابط الجزء بالدقايق |
++| `HLS_VIDEO_UPLOAD_THROTTLE` | `600,1` | حد الطلبات على راوتس التوقيع |
++| `HLS_VIDEO_RECONCILE_AFTER` | `15` | بعد كام دقيقة نتحقق من الرفعات المعلّقة |
++| `HLS_VIDEO_ABORT_AFTER` | `24` | بعد كام ساعة نلغي الرفعة المهجورة |
++| `HLS_VIDEO_UPLOADER_ACCESS_URL` | `''` | بادئة URL لراوتس الرفع |
++
++> **حجم الجزء**: R2 بيفرض إن كل الأجزاء تكون **بنفس الحجم** ماعدا الأخير، الحد الأدنى 5 MiB والأقصى 10,000 جزء. 32 MiB بيغطي ملف 320 جيجا نظرياً و64 جزء لملف 2 جيجا. لو طلابك على شبكات ضعيفة، 16 MiB بيخلي إعادة المحاولة أرخص.
++
++## 2. الـ migration
++
++```bash
++php artisan migrate     # على كل قاعدة بيانات مستأجر
++```
++
++بيعمل حاجتين:
++
++1. بيحوّل `hls_videos.status` من `ENUM` لـ `VARCHAR(20)` بـ `ALTER TABLE` خام. **ده بيعمل rebuild للجدول وبيقفله** — قيس الوقت على أكبر قاعدة بيانات في staging قبل البرودكشن. بعد الخطوة دي أي حالة جديدة مش هتحتاج migration تاني أبداً.
++2. بيضيف `r2_key`, `r2_upload_id`, `upload_size`, `upload_started_at` + index على `(status, upload_started_at)`.
++
++القيمة الافتراضية لـ `status` بتفضل `uploaded` فالمسار القديم زي ما هو.
++
++## 3. إعداد البكت
++
++**CORS** — الـ `ExposeHeaders` إجباري: من غير `ETag` مش هينفع Uppy يكمّل الرفع.
++
++```json
++[
++  {
++    "AllowedOrigins": ["https://tenant-a.example.com", "https://tenant-b.example.com"],
++    "AllowedMethods": ["PUT", "GET", "HEAD"],
++    "AllowedHeaders": ["*"],
++    "ExposeHeaders": ["ETag"],
++    "MaxAgeSeconds": 3600
++  }
++]
++```
++
++> ⚠️ **نقطة تحتاج اختبار**: توثيق R2 بيقول إن `AllowedOrigins` لازم تطابق بالظبط ومابيذكرش دعم wildcard. جرّب `https://*.example.com` بملف صغير الأول. لو مااشتغلش، اتنين حلول: تأتمت إضافة الـ origin عند إنشاء كل مستأجر، أو تحمّل واجهة الرفع في `iframe` من دومين واحد ثابت فيبقى الـ Origin واحد للأبد.
++>
++> انتشار سياسة الـ CORS بياخد لحد 30 ثانية.
++
++**Lifecycle** — إلغاء الرفعات الناقصة بعد يوم (الافتراضي 7 أيام):
++
++```bash
++npx wrangler r2 bucket lifecycle add <BUCKET> \
++  --name abort-incomplete --abort-multipart-days 1
++```
++
++## 4. الجدولة
++
++```php
++// app/Console/Kernel.php
++$schedule->command('hls-videos:reconcile-uploads')->everyTenMinutes();
++```
++
++الأمر ده بيلف على كل المستأجرين وبيعمل حاجتين:
++
++- **استرجاع**: رفعة خلصت على R2 بس الرد ما وصلش للسيرفر (التاب اتقفل، النت قطع، deploy في النص). `HeadObject` بيلاقي الملف فبيكمّل الحالة ويدفع الفيديو للترميز.
++- **تنظيف**: رفعة مهجورة → `AbortMultipartUpload` عشان الأجزاء تبطّل تتحاسب، والصف يتعلّم `upload_failed`.
++
++```bash
++php artisan hls-videos:reconcile-uploads --dry-run          # معاينة
++php artisan hls-videos:reconcile-uploads --tenant=12        # مستأجر واحد
++```
++
++## 5. الـ endpoints
++
++كلها تحت `hls/videos/direct` وجوه `uploader_access_middleware` + throttle خاص.
++
++| الطريقة | المسار | الجسم | الرد |
++|---|---|---|---|
++| POST | `init` | `filename`, `size`, `content_type`, `folder_id`, `model_type`, `model_id` | `video_id`, `key`, `uploadId`, `part_size` |
++| POST | `{videoId}/sign-part` | `partNumber` | `url`, `expires_at` |
++| GET | `{videoId}/parts` | — | `[{PartNumber, Size, ETag}]` |
++| POST | `{videoId}/complete` | `parts[]` | نفس شكل رد `getOptions` |
++| POST | `{videoId}/abort` | — | `{status: true}` |
++
++**نموذج الأمان**: العميل بيبعت `video_id` و `partNumber` وبس. الـ key والـ `uploadId` بيتقروا من صف الفيديو على اتصال المستأجر الحالي، فمفيش طريقة يوجّه بيها الرفع لمسار تاني أو مستأجر تاني. زيادة في الاحتياط، كل نداء توقيع بيتأكد إن الـ key بيبدأ ببادئة المستأجر الحالي. والتوقيع مسموح بس والحالة `pending_upload` — يعني مستحيل حد يدوس على فيديو منشور.
++
++## 6. مطلوب من سيرفر الترميز ⚠️
++
++في المسار القديم، PHP كان بياخد الـ thumbnail والمدة من الملف المحلي قبل ما يرفعه. دلوقتي الملف مابيعدّيش على PHP خالص، فـ **سيرفر الترميز هو اللي لازم يرجّعهم**.
++
++من غير التعديل ده، الفيديوهات المرفوعة بالمسار الجديد هتفضل من غير صورة ولا مدة.
++
++بعد ما العقدة تنزّل الأصل وقبل ما تبدأ الترميز، تبعت:
++
++```http
++POST {main_server}/hls/videos/probe-metadata/{videoId}
++Authorization: {steps_encoder_token}
++Content-Type: application/json
++
++{
++  "tenant_id": 12,
++  "duration": 3721.5,
++  "width": 1920,
++  "height": 1080,
++  "thumb": "<base64 JPEG>"
++}
++```
++
++- كل الحقول اختيارية ما عدا `tenant_id`.
++- `thumb` صورة JPEG بـ base64 — الطبيعي frame عند الثانية 3، زي ما `createThumb` كانت بتعمل.
++- السيرفر بيكتبها على نفس القرص ونفس المسار القديم (`{media_folder}/{video_id}/thumb.jpg`) وبيضبط `stream_data.thumb_disk`، فـ `HlsVideo::getThumbUrlAttribute` بيشتغل من غير أي تعديل.
++- الأمر idempotent — النداء مرتين مش بيضر.
++
++مثال ffmpeg على العقدة:
++
++```bash
++ffprobe -v quiet -print_format json -show_format -show_streams input.mp4
++ffmpeg -ss 3 -i input.mp4 -frames:v 1 -q:v 3 thumb.jpg
++```
++
++## 7. خطة النشر على staging
++
++1. بكت R2 منفصل + سياسة CORS + قاعدة lifecycle.
++2. `HLS_VIDEO_UPLOAD_DRIVER=direct` + `HLS_VIDEO_UPLOADED_DISK=r2_staging`.
++3. `php artisan migrate` ثم `route:clear && config:clear && view:clear`.
++4. عدّل سيرفر الترميز عشان يبعت `probe-metadata` (البند 6).
++5. جدول `hls-videos:reconcile-uploads`.
++6. اختبر: ملف 2 جيجا، اقطع النت في النص وكمّل، اقفل التاب وافتحه تاني، وجرّب `sign-part` بـ `video_id` بتاع مستأجر تاني (لازم 404).
++7. بعد ما يستقر: نزّل `upload_max_filesize` و `max_execution_time` لقيم عادية.
++
++## 8. التراجع
++
++```env
++HLS_VIDEO_UPLOAD_DRIVER=server
++```
++
++ثم `config:clear`. المسار القديم شغال زي ما هو والأعمدة الجديدة بتفضل موجودة من غير ضرر. الفيديوهات اللي اترفعت بالمسار الجديد بتفضل شغالة عادي لأنها في نفس مكان التخزين بالظبط.
+diff --git a/src/Console/Commands/ReconcileDirectUploadsCommand.php b/src/Console/Commands/ReconcileDirectUploadsCommand.php
+new file mode 100644
+index 0000000..b995f6d
+--- /dev/null
++++ b/src/Console/Commands/ReconcileDirectUploadsCommand.php
+@@ -0,0 +1,136 @@
++<?php
++
++namespace HlsVideos\Console\Commands;
++
++use HlsVideos\Http\Controllers\DirectUploadController;
++use HlsVideos\Models\HlsVideo;
++use HlsVideos\Services\DirectUploadService;
++use Illuminate\Console\Command;
++
++/**
++ * Closes the two gaps the browser cannot close by itself.
++ *
++ * 1. Recovery: /complete succeeded on R2 but the response never reached this
++ *    server (tab closed, connection dropped, deploy mid-request). The object
++ *    is there, the row still says pending. HeadObject finds it and the video
++ *    continues to the encoder.
++ *
++ * 2. Cleanup: the user abandoned the upload. The multipart upload is aborted
++ *    so its parts stop being billed, and the row is marked failed instead of
++ *    sitting pending forever.
++ *
++ * Schedule every ten minutes. Safe to run concurrently with live uploads: it
++ * only touches rows older than reconcile_after_minutes.
++ */
++class ReconcileDirectUploadsCommand extends Command
++{
++    protected $signature = 'hls-videos:reconcile-uploads
++                            {--tenant= : Restrict to a single tenant id}
++                            {--dry-run : Report what would change without writing}';
++
++    protected $description = 'Finish or abandon direct uploads left in pending_upload';
++
++    public function handle(): int
++    {
++        $tenantModel = config('hls-videos.tenant_model');
++
++        if (! $tenantModel) {
++            $this->error('config("hls-videos.tenant_model") is not set.');
++
++            return 1;
++        }
++
++        $query = $tenantModel::query();
++
++        if ($this->option('tenant')) {
++            $query->whereKey($this->option('tenant'));
++        }
++
++        $totals = ['completed' => 0, 'aborted' => 0, 'waiting' => 0];
++
++        foreach ($query->cursor() as $tenant) {
++            $tenant->makeCurrent();
++
++            try {
++                $result = $this->reconcileCurrentTenant();
++            } catch (\Throwable $e) {
++                $this->error("Tenant {$tenant->getKey()}: ".$e->getMessage());
++
++                continue;
++            }
++
++            foreach ($result as $key => $count) {
++                $totals[$key] += $count;
++            }
++        }
++
++        $this->info(sprintf(
++            '%s completed: %d, aborted: %d, still waiting: %d',
++            $this->option('dry-run') ? '[dry run]' : 'Done.',
++            $totals['completed'],
++            $totals['aborted'],
++            $totals['waiting']
++        ));
++
++        return 0;
++    }
++
++    protected function reconcileCurrentTenant(): array
++    {
++        $reconcileAfter = now()->subMinutes(
++            (int) config('hls-videos.direct_upload.reconcile_after_minutes', 15)
++        );
++
++        $abortAfter = now()->subHours(
++            (int) config('hls-videos.direct_upload.abort_after_hours', 24)
++        );
++
++        $counts = ['completed' => 0, 'aborted' => 0, 'waiting' => 0];
++        $uploads = app(DirectUploadService::class);
++
++        $videos = HlsVideo::pendingUpload()
++            ->where('upload_started_at', '<=', $reconcileAfter)
++            ->cursor();
++
++        foreach ($videos as $video) {
++
++            $head = $uploads->headObject($video->original_key);
++
++            if ($head !== null) {
++                // The object exists: the upload really did finish.
++                $this->line("  complete  {$video->id} ({$head['size']} bytes)");
++
++                if (! $this->option('dry-run')) {
++                    DirectUploadController::markUploaded($video);
++                }
++
++                $counts['completed']++;
++
++                continue;
++            }
++
++            if ($video->upload_started_at && $video->upload_started_at <= $abortAfter) {
++                $this->line("  abort     {$video->id}");
++
++                if (! $this->option('dry-run')) {
++                    if ($video->r2_upload_id) {
++                        $uploads->abortMultipartUpload($video->original_key, $video->r2_upload_id);
++                    }
++
++                    $video->forceFill([
++                        'status' => HlsVideo::UPLOAD_FAILED,
++                        'r2_upload_id' => null,
++                    ])->save();
++                }
++
++                $counts['aborted']++;
++
++                continue;
++            }
++
++            $counts['waiting']++;
++        }
++
++        return $counts;
++    }
++}
+diff --git a/src/Database/migrations/2026_09_11_000000_add_direct_upload_to_hls_videos_table.php b/src/Database/migrations/2026_09_11_000000_add_direct_upload_to_hls_videos_table.php
+new file mode 100644
+index 0000000..3b11b51
+--- /dev/null
++++ b/src/Database/migrations/2026_09_11_000000_add_direct_upload_to_hls_videos_table.php
+@@ -0,0 +1,82 @@
++<?php
++
++use Illuminate\Database\Migrations\Migration;
++use Illuminate\Database\Schema\Blueprint;
++use Illuminate\Support\Facades\DB;
++use Illuminate\Support\Facades\Schema;
++
++return new class extends Migration
++{
++    /**
++     * Adds the columns the direct-to-R2 upload flow needs, and widens the
++     * `status` column from ENUM to VARCHAR.
++     *
++     * Why VARCHAR instead of adding values to the ENUM: altering an ENUM on
++     * MySQL rebuilds and locks the whole table, and this migration has to run
++     * against every tenant database. Doing it once now means no future status
++     * ever needs a migration again.
++     *
++     * The default stays 'uploaded' so the legacy server-upload path behaves
++     * exactly as before.
++     */
++    public function up()
++    {
++        $driver = Schema::getConnection()->getDriverName();
++
++        if ($driver === 'mysql') {
++            // Raw statement on purpose: ->change() needs doctrine/dbal, which
++            // cannot introspect ENUM columns without extra type registration.
++            DB::statement("ALTER TABLE `hls_videos` MODIFY `status` VARCHAR(20) NOT NULL DEFAULT 'uploaded'");
++        }
++
++        Schema::table('hls_videos', function (Blueprint $table) {
++
++            if (! Schema::hasColumn('hls_videos', 'r2_key')) {
++                $table->string('r2_key', 1024)->nullable()->after('original_file_name');
++            }
++
++            if (! Schema::hasColumn('hls_videos', 'r2_upload_id')) {
++                $table->string('r2_upload_id', 255)->nullable()->after('r2_key');
++            }
++
++            if (! Schema::hasColumn('hls_videos', 'upload_size')) {
++                $table->unsignedBigInteger('upload_size')->nullable()->after('r2_upload_id');
++            }
++
++            if (! Schema::hasColumn('hls_videos', 'upload_started_at')) {
++                $table->timestamp('upload_started_at')->nullable()->after('upload_size');
++            }
++        });
++
++        // Index used by the reconcile/cleanup command, which scans by status.
++        try {
++            Schema::table('hls_videos', function (Blueprint $table) {
++                $table->index(['status', 'upload_started_at'], 'hls_videos_upload_state_index');
++            });
++        } catch (\Throwable $e) {
++            // Index already present.
++        }
++    }
++
++    public function down()
++    {
++        try {
++            Schema::table('hls_videos', function (Blueprint $table) {
++                $table->dropIndex('hls_videos_upload_state_index');
++            });
++        } catch (\Throwable $e) {
++            //
++        }
++
++        Schema::table('hls_videos', function (Blueprint $table) {
++            foreach (['upload_started_at', 'upload_size', 'r2_upload_id', 'r2_key'] as $column) {
++                if (Schema::hasColumn('hls_videos', $column)) {
++                    $table->dropColumn($column);
++                }
++            }
++        });
++
++        // `status` is intentionally left as VARCHAR: narrowing it back to an
++        // ENUM would destroy rows holding the newer statuses.
++    }
++};
+diff --git a/src/Http/Controllers/DirectUploadController.php b/src/Http/Controllers/DirectUploadController.php
+new file mode 100644
+index 0000000..5260693
+--- /dev/null
++++ b/src/Http/Controllers/DirectUploadController.php
+@@ -0,0 +1,260 @@
++<?php
++
++namespace HlsVideos\Http\Controllers;
++
++use HlsVideos\Http\Requests\InitDirectUploadRequest;
++use HlsVideos\Models\HlsVideo;
++use HlsVideos\Services\DirectUploadService;
++use HlsVideos\Services\VideoService;
++use Illuminate\Http\Request;
++use Illuminate\Routing\Controller;
++use Illuminate\Support\Facades\DB;
++
++/**
++ * Signs a browser-driven multipart upload straight to R2.
++ *
++ * The contract with the client is deliberately narrow: it may send a video id
++ * and a part number, nothing else. The storage key, the upload id and the
++ * bucket are all read from the video row on the current tenant's connection,
++ * so a client cannot redirect an upload at another path or another tenant.
++ */
++class DirectUploadController extends Controller
++{
++    protected ?DirectUploadService $uploads = null;
++
++    public function __construct(protected VideoService $videoService)
++    {
++        //
++    }
++
++    /**
++     * Resolved lazily rather than injected: its constructor throws when the
++     * disk is not S3-compatible, and these routes are registered even on
++     * installations still running the legacy driver, which must answer 404
++     * rather than 500.
++     */
++    protected function uploads(): DirectUploadService
++    {
++        return $this->uploads ??= app(DirectUploadService::class);
++    }
++
++    public function init(InitDirectUploadRequest $request)
++    {
++        $this->assertDriverEnabled();
++
++        $model = null;
++        if ($request->model_type && $request->model_id) {
++            $model = $request->model_type::find($request->model_id);
++        }
++
++        $video = DB::transaction(function () use ($request, $model) {
++            return $this->videoService->createPendingVideo(
++                originalFileName: $request->input('filename'),
++                extension: $request->safeExtension(),
++                model: $model,
++                folderId: $request->input('folder_id'),
++                size: (int) $request->input('size')
++            );
++        });
++
++        try {
++            $uploadId = $this->uploads()->createMultipartUpload(
++                $video->original_key,
++                $request->input('content_type') ?: 'video/mp4'
++            );
++        } catch (\Throwable $e) {
++            // No upload to abort yet -- drop the orphan row instead of leaving
++            // it for the reconcile command to puzzle over.
++            $video->forceFill(['status' => HlsVideo::UPLOAD_FAILED])->save();
++
++            \Log::error("createMultipartUpload failed for video {$video->id}: ".$e->getMessage());
++
++            return response()->json(['message' => 'تعذّر بدء الرفع، حاول مرة أخرى.'], 500);
++        }
++
++        $video->forceFill(['r2_upload_id' => $uploadId])->save();
++
++        return response()->json([
++            'video_id' => $video->id,
++            'key' => $video->original_key,
++            'uploadId' => $uploadId,
++            'part_size' => (int) config('hls-videos.direct_upload.part_size'),
++        ]);
++    }
++
++    public function signPart(Request $request, $videoId)
++    {
++        $this->assertDriverEnabled();
++
++        $video = $this->resolveUploadableVideo($videoId);
++
++        $partNumber = (int) $request->input('partNumber', $request->input('part_number'));
++
++        // 10,000 is the S3/R2 ceiling; anything outside it is a malformed or
++        // hostile client, not a retry worth signing.
++        if ($partNumber < 1 || $partNumber > 10000) {
++            abort(422, 'Invalid part number.');
++        }
++
++        return response()->json(
++            $this->uploads()->signPart($video->original_key, $video->r2_upload_id, $partNumber)
++        );
++    }
++
++    public function parts($videoId)
++    {
++        $this->assertDriverEnabled();
++
++        $video = $this->resolveUploadableVideo($videoId);
++
++        return response()->json(
++            $this->uploads()->listParts($video->original_key, $video->r2_upload_id)
++        );
++    }
++
++    public function complete(Request $request, $videoId)
++    {
++        $this->assertDriverEnabled();
++
++        $video = $this->findTenantVideo($videoId);
++
++        // Called twice -- a retry, a double click, a reconcile race. The first
++        // call did the work; say so and do nothing.
++        if ($video->status !== HlsVideo::PENDING_UPLOAD) {
++            return $this->optionsResponse($video);
++        }
++
++        $parts = $request->input('parts', []);
++
++        if (! is_array($parts) || empty($parts)) {
++            abort(422, 'No parts supplied.');
++        }
++
++        $this->assertOwnedKey($video);
++
++        try {
++            $this->uploads()->completeMultipartUpload(
++                $video->original_key,
++                $video->r2_upload_id,
++                $parts
++            );
++        } catch (\Throwable $e) {
++            \Log::error("completeMultipartUpload failed for video {$video->id}: ".$e->getMessage());
++
++            return response()->json(['message' => 'تعذّر إنهاء الرفع.'], 500);
++        }
++
++        $this->markUploaded($video);
++
++        return $this->optionsResponse($video->fresh());
++    }
++
++    public function abort($videoId)
++    {
++        $this->assertDriverEnabled();
++
++        $video = $this->findTenantVideo($videoId);
++
++        if ($video->status !== HlsVideo::PENDING_UPLOAD) {
++            abort(409, 'Upload is no longer in progress.');
++        }
++
++        $this->assertOwnedKey($video);
++
++        if ($video->r2_upload_id) {
++            $this->uploads()->abortMultipartUpload($video->original_key, $video->r2_upload_id);
++        }
++
++        $video->forceFill([
++            'status' => HlsVideo::UPLOAD_FAILED,
++            'r2_upload_id' => null,
++        ])->save();
++
++        return response()->json(['status' => true]);
++    }
++
++    /**
++     * Confirms the object really landed, records its size, then hands the video
++     * to the encoder. Shared by the client callback and the reconcile command
++     * so both take exactly the same path.
++     */
++    public static function markUploaded(HlsVideo $video): void
++    {
++        $uploads = app(DirectUploadService::class);
++        $head = $uploads->headObject($video->original_key);
++
++        $video->forceFill([
++            'status' => HlsVideo::UPLOADED,
++            'r2_upload_id' => null,
++            'upload_size' => $head['size'] ?? $video->upload_size,
++        ])->save();
++
++        (new VideoService)->startProcessing($video);
++    }
++
++    protected function resolveUploadableVideo($videoId): HlsVideo
++    {
++        $video = $this->findTenantVideo($videoId);
++
++        // Signing is only legitimate while an upload is genuinely in flight.
++        // Without this, anyone holding an id could overwrite a published video.
++        if ($video->status !== HlsVideo::PENDING_UPLOAD || ! $video->r2_upload_id) {
++            abort(409, 'This video is not accepting uploads.');
++        }
++
++        $this->assertOwnedKey($video);
++
++        return $video;
++    }
++
++    protected function findTenantVideo($videoId): HlsVideo
++    {
++        // Runs on the current tenant's connection, so another tenant's id
++        // simply does not resolve.
++        return HlsVideo::whereKey($videoId)->firstOrFail();
++    }
++
++    /**
++     * Belt and braces on top of database isolation: if tenant resolution ever
++     * misfires, this still refuses to sign a write outside the current
++     * tenant's own prefix.
++     */
++    protected function assertOwnedKey(HlsVideo $video): void
++    {
++        $expected = VideoService::tenantOriginalPrefix();
++
++        if (! $video->original_key || strpos($video->original_key, $expected) !== 0) {
++            \Log::warning("Rejected upload signing outside tenant prefix", [
++                'video' => $video->id,
++                'key' => $video->original_key,
++                'expected_prefix' => $expected,
++            ]);
++
++            abort(403);
++        }
++    }
++
++    protected function assertDriverEnabled(): void
++    {
++        if (config('hls-videos.upload_driver') !== 'direct') {
++            abort(404);
++        }
++    }
++
++    /**
++     * Same payload shape as HlsVideoController::getOptions so the existing
++     * front-end card rendering works unchanged.
++     */
++    protected function optionsResponse(HlsVideo $video)
++    {
++        return response()->json([
++            'html' => view("hls-videos::components.video-options", ['video' => $video])->render(),
++            'build_uploader' => false,
++            'is_ready' => $video->is_ready,
++            'video_source' => $video->is_ready
++                ? route(config('hls-videos.access_route_stream'), [$video->id])
++                : '',
++            'video_id' => $video->id,
++        ]);
++    }
++}
+diff --git a/src/Http/Controllers/HlsVideoController.php b/src/Http/Controllers/HlsVideoController.php
+index 5974553..13a4579 100644
+--- a/src/Http/Controllers/HlsVideoController.php
++++ b/src/Http/Controllers/HlsVideoController.php
+@@ -79,6 +79,64 @@ class HlsVideoController extends Controller
+         }
+     }
+ 
++    /**
++     * Receives duration/dimensions/thumbnail probed by the encoder node.
++     *
++     * Under the direct upload driver the file never reaches this server, so
++     * the metadata that createThumb()/getVideoDuration() used to extract
++     * locally is supplied here instead -- by the node that already holds the
++     * file and has ffmpeg. Called once, right after the node downloads the
++     * original and before transcoding starts, so the video card fills in
++     * without waiting for the full convert.
++     *
++     * Body: tenant_id, duration, width, height, thumb (base64 JPEG, optional)
++     * Auth: the same shared token uploadFromServer uses.
++     */
++    public function probeMetadata(Request $request, $videoId)
++    {
++        $authToken = $request->header('Authorization');
++
++        if (! config('hls-videos.steps_encoder_token') || $authToken != config('hls-videos.steps_encoder_token')) {
++            return response()->json([false, __('apps::dashboard.messages.failed')], 401);
++        }
++
++        $validated = $request->validate([
++            'tenant_id' => 'required',
++            'duration' => 'nullable|numeric|min:0',
++            'width' => 'nullable|integer|min:0',
++            'height' => 'nullable|integer|min:0',
++            'thumb' => 'nullable|string',
++        ]);
++
++        try {
++            $tenant = config('hls-videos.tenant_model')::findOrFail($validated['tenant_id']);
++            $tenant->makeCurrent();
++
++            $video = \HlsVideos\Models\HlsVideo::whereKey($videoId)->firstOrFail();
++
++            $thumb = null;
++            if (! empty($validated['thumb'])) {
++                $thumb = base64_decode($validated['thumb'], true);
++
++                if ($thumb === false) {
++                    return response()->json(['message' => 'thumb is not valid base64'], 422);
++                }
++            }
++
++            $this->videoService->applyProbedMetadata($video, $validated, $thumb);
++
++            return response()->json(['message' => 'Metadata stored']);
++
++        } catch (\Exception $e) {
++            logger("probeMetadata error", [
++                'error' => $e->getMessage(),
++                'videoId' => $videoId,
++            ]);
++
++            return response()->json([false, $e->getMessage()], 500);
++        }
++    }
++
+     public function list(Request $request)
+     {
+ 
+diff --git a/src/Http/Requests/InitDirectUploadRequest.php b/src/Http/Requests/InitDirectUploadRequest.php
+new file mode 100644
+index 0000000..4a7343d
+--- /dev/null
++++ b/src/Http/Requests/InitDirectUploadRequest.php
+@@ -0,0 +1,61 @@
++<?php
++
++namespace HlsVideos\Http\Requests;
++
++use Illuminate\Foundation\Http\FormRequest;
++
++class InitDirectUploadRequest extends FormRequest
++{
++    public function rules()
++    {
++        return [
++            'filename' => 'required|string|max:255',
++            'size' => [
++                'required',
++                'integer',
++                'min:1',
++                'max:'.(int) config('hls-videos.direct_upload.max_file_size'),
++            ],
++            'content_type' => 'nullable|string|max:255',
++            'folder_id' => 'nullable',
++            'model_type' => 'nullable|string',
++            'model_id' => 'nullable',
++        ];
++    }
++
++    public function messages()
++    {
++        return [
++            'size.max' => 'الملف أكبر من الحد المسموح به.',
++        ];
++    }
++
++    /**
++     * Route-level middleware (config: uploader_access_middleware) handles
++     * authentication. Per-video authorization is delegated to the optional
++     * hook at config('hls-videos.direct_upload.authorize'), which receives
++     * ($request, $folderId) and returns a bool.
++     */
++    public function authorize()
++    {
++        $hook = config('hls-videos.direct_upload.authorize');
++
++        if (! $hook) {
++            return true;
++        }
++
++        return (bool) call_user_func($hook, $this, $this->input('folder_id'));
++    }
++
++    /**
++     * Extension is taken from the uploaded name but never trusted verbatim:
++     * it becomes part of a storage key.
++     */
++    public function safeExtension(): string
++    {
++        $extension = strtolower(pathinfo($this->input('filename'), PATHINFO_EXTENSION));
++        $extension = preg_replace('/[^a-z0-9]/', '', (string) $extension);
++
++        return $extension !== '' ? substr($extension, 0, 10) : 'mp4';
++    }
++}
+diff --git a/src/Models/HlsVideo.php b/src/Models/HlsVideo.php
+index de810dc..1560cc0 100644
+--- a/src/Models/HlsVideo.php
++++ b/src/Models/HlsVideo.php
+@@ -9,13 +9,18 @@ use HlsVideos\Services\VideoService;
+ class HlsVideo extends Model
+ {
+ 
++    const PENDING_UPLOAD = 'pending_upload';
++    const UPLOAD_FAILED = 'upload_failed';
+     const UPLOADED = 'uploaded';
+     const PROCESSING = 'processing';
+     const READY = 'ready';
+     const ORIENTATION_PORTRAIT = 'P';
+     const ORIENTATION_LANDSCAPE = 'L';
+     protected $guarded = [];
+-    public $casts = ['stream_data' => 'array'];
++    public $casts = [
++        'stream_data' => 'array',
++        'upload_started_at' => 'datetime',
++    ];
+     public $incrementing = false;
+     protected $keyType = 'string';
+ 
+@@ -25,6 +30,18 @@ class HlsVideo extends Model
+ 
+         static::created(function ($video) {
+             $videoService = new VideoService;
++
++            // Direct-to-R2: the row exists so that its id can be used to build
++            // the storage key, but no bytes have been uploaded yet. Probing the
++            // file or starting the encoder here would act on nothing --
++            // DirectUploadController::complete() does both once the upload
++            // actually finishes.
++            if ($video->status === self::PENDING_UPLOAD) {
++                $videoService->protectVideo($video);
++
++                return;
++            }
++
+             $videoService->createThumb($video);
+             $videoService->getVideoDuration($video);
+             $videoService->protectVideo($video);
+@@ -33,12 +50,40 @@ class HlsVideo extends Model
+ 
+         static::deleting(function ($video) {
+             $video->qualities()->delete();
++
+             foreach (config('hls-videos.storages') as $disk => $config) {
+                 Storage::disk($disk)->deleteDirectory(VideoService::getMediaPath().$video->id);
+             }
++
++            // The original lives under a different prefix than the HLS output
++            // and was previously left behind on every delete.
++            try {
++                $originalDisk = config('hls-videos.uploaded_videos_disk');
++                $prefix = trim(config('hls-videos.temp_videos_prefix', 'temp-videos'), '/');
++
++                Storage::disk($originalDisk)->deleteDirectory(
++                    $prefix.'/'.VideoService::getMediaPath().$video->id
++                );
++            } catch (\Exception $e) {
++                \Log::warning("Could not delete original for video {$video->id}: ".$e->getMessage());
++            }
+         });
+     }
+ 
++    public function scopePendingUpload($query)
++    {
++        return $query->where('status', self::PENDING_UPLOAD);
++    }
++
++    /**
++     * Remote key of the original file. Prefers the value stored at init time,
++     * falling back to recomputing it for rows created by the legacy driver.
++     */
++    public function getOriginalKeyAttribute(): string
++    {
++        return $this->r2_key ?: VideoService::originalKey($this);
++    }
++
+     public function parentFolders()
+     {
+         return $this->belongsToMany(
+diff --git a/src/Providers/HlsVideoServiceProvider.php b/src/Providers/HlsVideoServiceProvider.php
+index 67e062f..674bf53 100644
+--- a/src/Providers/HlsVideoServiceProvider.php
++++ b/src/Providers/HlsVideoServiceProvider.php
+@@ -2,6 +2,7 @@
+ namespace HlsVideos\Providers;
+ 
+ use HlsVideos\Components\{VideoManeger, Video};
++use HlsVideos\Console\Commands\ReconcileDirectUploadsCommand;
+ use Illuminate\Support\Facades\Blade;
+ use Illuminate\Support\ServiceProvider;
+ 
+@@ -25,6 +26,12 @@ class HlsVideoServiceProvider extends ServiceProvider
+         // Register blade component
+         Blade::component('hls-video-manager', VideoManeger::class);
+         Blade::component('hls-video', Video::class);
++
++        if ($this->app->runningInConsole()) {
++            $this->commands([
++                ReconcileDirectUploadsCommand::class,
++            ]);
++        }
+     }
+ 
+     public function register()
+diff --git a/src/Routes/web.php b/src/Routes/web.php
+index 7e7dcef..dd4853b 100644
+--- a/src/Routes/web.php
++++ b/src/Routes/web.php
+@@ -1,5 +1,6 @@
+ <?php
+ use Illuminate\Support\Facades\Route;
++use HlsVideos\Http\Controllers\DirectUploadController;
+ use HlsVideos\Http\Controllers\HlsVideoController;
+ use HlsVideos\Http\Controllers\HlsFolderController;
+ use HlsVideos\Http\Controllers\HlsFolderVideoController;
+@@ -13,6 +14,28 @@ Route::name('hls.videos.')
+         Route::any('upload', [HlsVideoController::class, 'uploadVideo'])->name('upload');
+     });
+ 
++/*
++| Direct-to-R2 signing routes.
++|
++| These hand out write access to the bucket, so unlike the legacy `upload`
++| route above they sit INSIDE the configured access middleware. They also
++| carry their own rate limit: the framework default of 60/minute is lower
++| than the number of parts in a single large upload and would stall it.
++*/
++Route::name('hls.videos.direct.')
++    ->prefix('hls/videos/direct')
++    ->middleware(array_merge(
++        ['web'],
++        $middleware,
++        ['throttle:'.config('hls-videos.direct_upload.throttle', '600,1')]
++    ))
++    ->group(function () {
++        Route::post('init', [DirectUploadController::class, 'init'])->name('init');
++        Route::post('{videoId}/sign-part', [DirectUploadController::class, 'signPart'])->name('sign-part');
++        Route::get('{videoId}/parts', [DirectUploadController::class, 'parts'])->name('parts');
++        Route::post('{videoId}/complete', [DirectUploadController::class, 'complete'])->name('complete');
++        Route::post('{videoId}/abort', [DirectUploadController::class, 'abort'])->name('abort');
++    });
+ 
+ Route::middleware($middleware)->group(function () {
+ 
+@@ -22,6 +45,7 @@ Route::middleware($middleware)->group(function () {
+ 
+             Route::get('list', [HlsVideoController::class, 'list'])->name('list');
+             Route::post('upload-from-server/{videoId}', [HlsVideoController::class, 'uploadFromServer'])->name('upload-from-server');
++            Route::post('probe-metadata/{videoId}', [HlsVideoController::class, 'probeMetadata'])->name('probe-metadata');
+             Route::post('assign-video-to-module', [HlsVideoController::class, 'assignVideoToModule'])->name('assign-video-to-module');
+             Route::get('video-options/{videoId?}', [HlsVideoController::class, 'getOptions'])->name('options');
+             Route::delete('video-delete/{videoId}', [HlsVideoController::class, 'deleteVideo'])->name('delete');
+diff --git a/src/Services/DirectUploadService.php b/src/Services/DirectUploadService.php
+new file mode 100644
+index 0000000..1f29a5e
+--- /dev/null
++++ b/src/Services/DirectUploadService.php
+@@ -0,0 +1,209 @@
++<?php
++
++namespace HlsVideos\Services;
++
++use Aws\S3\S3Client;
++
++/**
++ * Thin wrapper around the S3 multipart API for browser-driven uploads.
++ *
++ * Everything here deals in raw keys. Deciding WHICH key a caller is allowed to
++ * touch is the controller's job -- this class never reads anything from the
++ * request.
++ */
++class DirectUploadService
++{
++    protected string $diskName;
++
++    protected array $diskConfig;
++
++    protected ?S3Client $client = null;
++
++    public function __construct(?string $diskName = null)
++    {
++        $this->diskName = $diskName ?: config('hls-videos.uploaded_videos_disk', 'r2');
++        $this->diskConfig = config("filesystems.disks.{$this->diskName}") ?? [];
++
++        if (empty($this->diskConfig['bucket'])) {
++            throw new \RuntimeException(
++                "Disk [{$this->diskName}] is not configured as an S3-compatible disk; direct upload needs a bucket."
++            );
++        }
++    }
++
++    public function bucket(): string
++    {
++        return $this->diskConfig['bucket'];
++    }
++
++    /**
++     * Builds the S3 client straight from the disk configuration rather than
++     * pulling it off the Flysystem adapter, because the way to reach that
++     * adapter differs between Laravel 7/8 (Flysystem 1) and Laravel 9+
++     * (Flysystem 3), and this package supports both.
++     */
++    public function client(): S3Client
++    {
++        if ($this->client) {
++            return $this->client;
++        }
++
++        $args = [
++            'version' => 'latest',
++            'region' => $this->diskConfig['region'] ?? 'auto',
++            'endpoint' => $this->diskConfig['endpoint'] ?? null,
++            'use_path_style_endpoint' => (bool) ($this->diskConfig['use_path_style_endpoint'] ?? false),
++            'credentials' => [
++                'key' => $this->diskConfig['key'] ?? null,
++                'secret' => $this->diskConfig['secret'] ?? null,
++            ],
++        ];
++
++        // Recent versions of aws/aws-sdk-php compute request checksums by
++        // default, which adds x-amz-sdk-checksum-algorithm to the signature.
++        // The browser never sends that header, so every presigned PUT would
++        // fail with SignatureDoesNotMatch. Older SDKs reject the option, hence
++        // the fallback.
++        try {
++            $this->client = new S3Client($args + ['request_checksum_calculation' => 'when_required']);
++        } catch (\InvalidArgumentException $e) {
++            $this->client = new S3Client($args);
++        }
++
++        return $this->client;
++    }
++
++    public function createMultipartUpload(string $key, ?string $contentType = null): string
++    {
++        $result = $this->client()->createMultipartUpload(array_filter([
++            'Bucket' => $this->bucket(),
++            'Key' => $key,
++            'ContentType' => $contentType,
++        ]));
++
++        return $result['UploadId'];
++    }
++
++    /**
++     * Presigned URL for a single UploadPart call.
++     *
++     * Neither Body nor ContentLength are set: including them would bake those
++     * headers into the signature, and the browser sends its own.
++     */
++    public function signPart(string $key, string $uploadId, int $partNumber, ?int $ttlMinutes = null): array
++    {
++        $ttlMinutes = $ttlMinutes ?: (int) config('hls-videos.direct_upload.url_ttl_minutes', 30);
++
++        $command = $this->client()->getCommand('UploadPart', [
++            'Bucket' => $this->bucket(),
++            'Key' => $key,
++            'UploadId' => $uploadId,
++            'PartNumber' => $partNumber,
++        ]);
++
++        $request = $this->client()->createPresignedRequest($command, "+{$ttlMinutes} minutes");
++
++        return [
++            'url' => (string) $request->getUri(),
++            'expires_at' => now()->addMinutes($ttlMinutes)->toIso8601String(),
++        ];
++    }
++
++    /**
++     * Parts already stored by R2, in the shape Uppy's listParts expects.
++     */
++    public function listParts(string $key, string $uploadId): array
++    {
++        $parts = [];
++        $marker = 0;
++
++        do {
++            $result = $this->client()->listParts([
++                'Bucket' => $this->bucket(),
++                'Key' => $key,
++                'UploadId' => $uploadId,
++                'PartNumberMarker' => $marker,
++            ]);
++
++            foreach ($result['Parts'] ?? [] as $part) {
++                $parts[] = [
++                    'PartNumber' => (int) $part['PartNumber'],
++                    'Size' => (int) $part['Size'],
++                    'ETag' => $part['ETag'],
++                ];
++            }
++
++            $marker = (int) ($result['NextPartNumberMarker'] ?? 0);
++        } while (! empty($result['IsTruncated']));
++
++        return $parts;
++    }
++
++    /**
++     * @param  array  $parts  list of ['PartNumber' => int, 'ETag' => string]
++     */
++    public function completeMultipartUpload(string $key, string $uploadId, array $parts): array
++    {
++        $normalised = [];
++
++        foreach ($parts as $part) {
++            $number = (int) ($part['PartNumber'] ?? $part['partNumber'] ?? 0);
++            $etag = $part['ETag'] ?? $part['etag'] ?? null;
++
++            if ($number < 1 || ! $etag) {
++                throw new \InvalidArgumentException('Malformed part entry in completeMultipartUpload.');
++            }
++
++            $normalised[] = ['PartNumber' => $number, 'ETag' => $etag];
++        }
++
++        usort($normalised, fn ($a, $b) => $a['PartNumber'] <=> $b['PartNumber']);
++
++        $result = $this->client()->completeMultipartUpload([
++            'Bucket' => $this->bucket(),
++            'Key' => $key,
++            'UploadId' => $uploadId,
++            'MultipartUpload' => ['Parts' => $normalised],
++        ]);
++
++        return [
++            'location' => $result['Location'] ?? null,
++            'etag' => $result['ETag'] ?? null,
++        ];
++    }
++
++    public function abortMultipartUpload(string $key, string $uploadId): void
++    {
++        try {
++            $this->client()->abortMultipartUpload([
++                'Bucket' => $this->bucket(),
++                'Key' => $key,
++                'UploadId' => $uploadId,
++            ]);
++        } catch (\Throwable $e) {
++            // Already gone, or expired by the bucket lifecycle rule. Either way
++            // there is nothing left to abort.
++            \Log::info("abortMultipartUpload ignored for {$key}: ".$e->getMessage());
++        }
++    }
++
++    /**
++     * @return array{size:int,etag:?string}|null  null when the object is absent
++     */
++    public function headObject(string $key): ?array
++    {
++        try {
++            $result = $this->client()->headObject([
++                'Bucket' => $this->bucket(),
++                'Key' => $key,
++            ]);
++
++            return [
++                'size' => (int) $result['ContentLength'],
++                'etag' => $result['ETag'] ?? null,
++            ];
++        } catch (\Throwable $e) {
++            return null;
++        }
++    }
++}
+diff --git a/src/Services/Qualities/UploadToStepsLocalencoderService.php b/src/Services/Qualities/UploadToStepsLocalencoderService.php
+index 6fbf236..d09f578 100644
+--- a/src/Services/Qualities/UploadToStepsLocalencoderService.php
++++ b/src/Services/Qualities/UploadToStepsLocalencoderService.php
+@@ -34,25 +34,32 @@ class UploadToStepsLocalencoderService implements VideoQualityProcessorInterface
+         ]);
+ 
+         $sourcePath = VideoService::getMediaPath()."{$this->video->id}/{$this->video->file_name}";
+-        $destinationPath = "temp-videos/".VideoService::getMediaPath()."{$this->video->id}/{$this->video->file_name}";
++        $destinationPath = VideoService::originalKey($this->video);
+         $localDisk = \Storage::disk(config('hls-videos.temp_disk'));
++        $s3Disk = \Storage::disk(config('hls-videos.uploaded_videos_disk'));  // R2 / S3
+ 
+-        if (! $localDisk->exists($sourcePath)) {
+-            throw new \Exception("Video file not found at path: {$sourcePath}");
+-        }
++        if ($localDisk->exists($sourcePath)) {
+ 
+-        $s3Disk = \Storage::disk(config('hls-videos.uploaded_videos_disk'));  // R2 / S3
++            // Legacy server-upload driver: the file arrived through PHP and
++            // still has to be pushed up to the remote disk.
++            $stream = $localDisk->readStream($sourcePath);
++
++            $s3Disk->put($destinationPath, $stream);
++
++            if (is_resource($stream)) {
++                fclose($stream);
++            }
+ 
+-        $stream = $localDisk->readStream($sourcePath);
++            // Optional: delete local file after upload
++            $localDisk->deleteDirectory(VideoService::getMediaPath()."{$this->video->id}");
+ 
+-        $s3Disk->put($destinationPath, $stream);
++        } elseif (! $s3Disk->exists($destinationPath)) {
+ 
+-        if (is_resource($stream)) {
+-            fclose($stream);
++            throw new \Exception("Video file not found locally ({$sourcePath}) nor on remote storage ({$destinationPath}).");
+         }
+ 
+-        // Optional: delete local file after upload
+-        $localDisk->deleteDirectory(VideoService::getMediaPath()."{$this->video->id}");
++        // Otherwise the browser uploaded straight to R2 and the file is already
++        // sitting at $destinationPath -- nothing for this server to move.
+ 
+         $client = new \GuzzleHttp\Client();
+ 
+diff --git a/src/Services/VideoService.php b/src/Services/VideoService.php
+index cc97f07..23dbe21 100644
+--- a/src/Services/VideoService.php
++++ b/src/Services/VideoService.php
+@@ -49,6 +49,41 @@ class VideoService
+         }
+     }
+ 
++    /**
++     * Applies metadata probed elsewhere (the encoder node, which already holds
++     * the file and has ffmpeg) to a video uploaded straight to R2.
++     *
++     * Writes the thumbnail to exactly the path and disk createThumb() uses, so
++     * HlsVideo::getThumbUrlAttribute keeps working untouched.
++     *
++     * @param  string|null  $thumbContents  raw JPEG bytes
++     */
++    public function applyProbedMetadata(HlsVideo $video, array $metadata, ?string $thumbContents = null): void
++    {
++        $stream = $video->stream_data ?? [];
++
++        foreach (['duration', 'width', 'height'] as $field) {
++            if (isset($metadata[$field])) {
++                $stream[$field] = $metadata[$field];
++            }
++        }
++
++        if ($thumbContents !== null && config('hls-videos.take_thumbnail', true)) {
++            try {
++                Storage::disk(config('hls-videos.thumb_disk'))->put(
++                    VideoService::getMediaPath()."$video->id/thumb.jpg",
++                    $thumbContents
++                );
++
++                $stream['thumb_disk'] = config('hls-videos.thumb_disk');
++            } catch (\Exception $e) {
++                \Log::warning("Could not store probed thumbnail for video {$video->id}: ".$e->getMessage());
++            }
++        }
++
++        $video->update(['stream_data' => $stream]);
++    }
++
+     public function protectVideo(HlsVideo $video)
+     {
+         try {
+@@ -66,6 +101,48 @@ class VideoService
+         return app('currentTenant')->media_folder.'/';
+     }
+ 
++    /**
++     * Single source of truth for where the ORIGINAL video file lives on the
++     * remote disk. Built server side from the video row -- never from request
++     * input -- so a client cannot steer a signed upload at an arbitrary path.
++     *
++     * Shape: {prefix}/{tenant->media_folder}/{video_id}/{file_name}
++     * which is exactly the layout the encoder nodes already expect.
++     */
++    static function originalKey($video): string
++    {
++        $prefix = trim(config('hls-videos.temp_videos_prefix', 'temp-videos'), '/');
++
++        return $prefix.'/'.self::getMediaPath()."{$video->id}/{$video->file_name}";
++    }
++
++    /**
++     * Prefix every original of the current tenant must sit under. Used as a
++     * belt-and-braces check on top of per-tenant database isolation.
++     */
++    static function tenantOriginalPrefix(): string
++    {
++        $prefix = trim(config('hls-videos.temp_videos_prefix', 'temp-videos'), '/');
++
++        return $prefix.'/'.self::getMediaPath();
++    }
++
++    /**
++     * Kicks off transcoding. Split out of the HlsVideo::created hook so that a
++     * row can exist -- and own a key -- before its file has been uploaded.
++     * Idempotent: a video that already has qualities is left alone.
++     */
++    public function startProcessing($video): bool
++    {
++        if ($video->qualities()->exists()) {
++            return false;
++        }
++
++        $this->handleVideoQualities($video);
++
++        return true;
++    }
++
+     static function getSubDomain()
+     {
+         return app('currentTenant')->subdomain;
+@@ -160,6 +237,55 @@ class VideoService
+         return $video;
+     }
+ 
++    /**
++     * Creates the video row BEFORE any bytes are uploaded, so that the id --
++     * and therefore the storage key -- exists at signing time.
++     *
++     * Mirrors handlingUploadedFile()'s model/folder attachment so both upload
++     * drivers produce identical rows. The PENDING_UPLOAD status is what stops
++     * the created hook from starting the encoder on an empty file.
++     */
++    public function createPendingVideo(
++        string $originalFileName,
++        string $extension,
++        $model = null,
++        $folderId = null,
++        ?int $size = null
++    ): HlsVideo {
++
++        $extension = ltrim(strtolower($extension), '.');
++        $videoId = $this->createUniqueVideoUuid();
++
++        $video = HlsVideo::create([
++            'id' => $videoId,
++            'status' => HlsVideo::PENDING_UPLOAD,
++            'file_name' => "vd.$extension",
++            'original_extension' => $extension,
++            'original_file_name' => $originalFileName,
++            'upload_size' => $size,
++            'upload_started_at' => now(),
++        ]);
++
++        // Key depends on file_name, which is only known once the row exists.
++        $video->forceFill(['r2_key' => self::originalKey($video)])->save();
++
++        if ($model) {
++            $model->hlsVideos()->attach([$video->id]);
++        }
++
++        $folder = HlsFolder::find($folderId)
++            ?? config('hls-videos.repositories.hls_folder')::mainSharedFolders(HlsFolder::query())->first();
++
++        if ($folder) {
++            $folder->videos()->attach(
++                $video->id,
++                ['title' => $video->original_file_name]
++            );
++        }
++
++        return $video;
++    }
++
+     public function receiveFromServer($request, $videoId)
+     {
+         $video = HlsVideo::findOrFail($videoId);
+diff --git a/src/resources/views/components/hls-video-maneger.blade.php b/src/resources/views/components/hls-video-maneger.blade.php
+index 3132869..6e13158 100644
+--- a/src/resources/views/components/hls-video-maneger.blade.php
++++ b/src/resources/views/components/hls-video-maneger.blade.php
+@@ -772,6 +772,196 @@
+ @push('hls-scripts')
+     <script src="https://releases.transloadit.com/uppy/v3.18.0/uppy.min.js"></script>
+     <script>
++        const HLS_UPLOAD = {
++            driver: @json(config('hls-videos.upload_driver', 'server')),
++            baseUrl: @json(rtrim(config('hls-videos.uploader_access_url', ''), '/')),
++            partSize: @json((int) config('hls-videos.direct_upload.part_size', 32 * 1024 * 1024)),
++            maxFileSize: @json(
++                config('hls-videos.upload_driver') === 'direct'
++                    ? (int) config('hls-videos.direct_upload.max_file_size', 3 * 1024 * 1024 * 1024)
++                    : 1500 * 1024 * 1024
++            ),
++            headers: {
++                'Accept': 'application/json',
++                'X-CSRF-TOKEN': @json(csrf_token()),
++                'X-tenant': @json(HlsVideos\Services\VideoService::getSubDomain()),
++            },
++        };
++
++        /*
++         * Resume support.
++         *
++         * Uppy's AwsS3Multipart can resume an interrupted upload, but only if it
++         * is handed back the same uploadId -- and it keeps no memory of its own
++         * across a page reload. So the id is parked in localStorage under a
++         * signature of the file, and createMultipartUpload hands it back instead
++         * of starting a fresh upload. listParts then tells Uppy which parts are
++         * already on R2 and it carries on from there.
++         */
++        const HlsResumeStore = {
++            key: 'hls-video-uploads',
++            ttl: 24 * 60 * 60 * 1000,
++
++            signature(file) {
++                const d = file.data;
++                return [d.name, d.size, d.lastModified].join(':');
++            },
++
++            all() {
++                try {
++                    const raw = window.localStorage.getItem(this.key);
++                    const parsed = raw ? JSON.parse(raw) : {};
++                    const now = Date.now();
++
++                    // Drop anything past the bucket's abort window; the uploadId
++                    // is long gone by then and reusing it just 404s.
++                    Object.keys(parsed).forEach((k) => {
++                        if (!parsed[k].at || now - parsed[k].at > this.ttl) delete parsed[k];
++                    });
++
++                    return parsed;
++                } catch (e) {
++                    return {};
++                }
++            },
++
++            get(file) {
++                return this.all()[this.signature(file)] || null;
++            },
++
++            put(file, data) {
++                try {
++                    const all = this.all();
++                    all[this.signature(file)] = Object.assign({ at: Date.now() }, data);
++                    window.localStorage.setItem(this.key, JSON.stringify(all));
++                } catch (e) { /* private mode, quota, etc. -- resume is optional */ }
++            },
++
++            forget(file) {
++                try {
++                    const all = this.all();
++                    delete all[this.signature(file)];
++                    window.localStorage.setItem(this.key, JSON.stringify(all));
++                } catch (e) { /* noop */ }
++            },
++        };
++
++        async function hlsUploadRequest(path, options = {}) {
++            const response = await fetch(HLS_UPLOAD.baseUrl + '/hls/videos/direct/' + path, Object.assign({
++                credentials: 'same-origin',
++                headers: Object.assign({ 'Content-Type': 'application/json' }, HLS_UPLOAD.headers),
++            }, options));
++
++            if (!response.ok) {
++                const text = await response.text();
++                throw new Error('Upload request failed (' + response.status + '): ' + text.slice(0, 200));
++            }
++
++            return response.json();
++        }
++
++        function useDirectUpload() {
++            uppy.use(Uppy.AwsS3Multipart, {
++                // Concurrent parts in flight. Four keeps a fat connection busy
++                // without starving the signing endpoint.
++                limit: 4,
++                retryDelays: [0, 1000, 3000, 5000, 10000],
++
++                // R2 requires every part except the last to be exactly the same
++                // size, so this must be a constant, not a per-file calculation.
++                getChunkSize: () => HLS_UPLOAD.partSize,
++
++                createMultipartUpload: async (file) => {
++                    const resumable = HlsResumeStore.get(file);
++
++                    if (resumable) {
++                        // The stored upload may have been aborted in the
++                        // meantime -- by the cleanup command or the bucket's
++                        // lifecycle rule. Probe it before trusting it, and fall
++                        // through to a fresh upload if it is gone.
++                        try {
++                            videoId = resumable.videoId;
++                            await hlsUploadRequest(resumable.videoId + '/parts', { method: 'GET' });
++
++                            return { uploadId: resumable.uploadId, key: resumable.key };
++                        } catch (e) {
++                            HlsResumeStore.forget(file);
++                            videoId = null;
++                        }
++                    }
++
++                    const meta = uppy.getState().meta || {};
++
++                    const data = await hlsUploadRequest('init', {
++                        method: 'POST',
++                        body: JSON.stringify({
++                            filename: file.name,
++                            size: file.size,
++                            content_type: file.type,
++                            folder_id: meta.folder_id,
++                            model_type: meta.model_type,
++                            model_id: meta.model_id,
++                        }),
++                    });
++
++                    videoId = data.video_id;
++
++                    HlsResumeStore.put(file, {
++                        videoId: data.video_id,
++                        uploadId: data.uploadId,
++                        key: data.key,
++                    });
++
++                    return { uploadId: data.uploadId, key: data.key };
++                },
++
++                // Only the part number crosses the wire. The key and uploadId are
++                // read server-side from the video row, so a tampered client
++                // cannot aim the upload at a different object.
++                signPart: async (file, { partNumber }) => {
++                    const data = await hlsUploadRequest(videoId + '/sign-part', {
++                        method: 'POST',
++                        body: JSON.stringify({ partNumber: partNumber }),
++                    });
++
++                    return { url: data.url };
++                },
++
++                listParts: async () => {
++                    return hlsUploadRequest(videoId + '/parts', { method: 'GET' });
++                },
++
++                completeMultipartUpload: async (file, { parts }) => {
++                    const data = await hlsUploadRequest(videoId + '/complete', {
++                        method: 'POST',
++                        body: JSON.stringify({
++                            parts: parts.map((p) => ({ PartNumber: p.PartNumber, ETag: p.ETag })),
++                        }),
++                    });
++
++                    HlsResumeStore.forget(file);
++
++                    videoId = data.video_id;
++                    setVideoOptionCard(data);
++
++                    return { location: null };
++                },
++
++                abortMultipartUpload: async (file) => {
++                    HlsResumeStore.forget(file);
++
++                    if (!videoId) return;
++
++                    try {
++                        await hlsUploadRequest(videoId + '/abort', { method: 'POST' });
++                    } catch (e) {
++                        // The reconcile command cleans up whatever is left.
++                        console.warn('abort failed', e);
++                    }
++                },
++            });
++        }
++
+         let uppy = null;
+         let modelType = "{{ $model ? str_replace('\\', '\\\\', get_class($model)) : null }}";
+         let modelId = "{{ $model?->id }}";
+@@ -792,14 +982,16 @@
+             uppy = new Uppy.Uppy({
+                 restrictions: {
+                     maxNumberOfFiles: 1, // ✅ Allow only one file
+-                    maxFileSize: 1500 * 1024 * 1024, // 50MB
++                    maxFileSize: HLS_UPLOAD.maxFileSize,
+                     allowedFileTypes: [
+                         'video/*' // ✅ Accept ALL video formats
+                     ]
+                 },
+                 autoProceed: false, // Automatically start uploading after the file is selected
+-                parallel: true, // Enable parallel uploads of chunks
+-                chunkSize: 10 * 1024 * 1024 // 10MB per chunk (can be adjusted)
++                // NOTE: `parallel` and `chunkSize` used to be passed here. Neither
++                // is a real Uppy option, so both were silently ignored and the
++                // whole file went out in a single request. Part size for the
++                // direct driver is set on AwsS3Multipart's getChunkSize below.
+             });
+ 
+             // ✅ Remove previous file when a new one is added
+@@ -908,24 +1100,20 @@
+                 folder_id: folderId,
+             });
+ 
+-            // Add XHRUpload plugin for chunk upload handling
+-            uppy.use(Uppy.XHRUpload, {
+-                endpoint: '{{ config('hls-videos.uploader_access_url') }}/hls/videos/upload', // Your backend endpoint for receiving chunks
+-                formData: true,
+-                fieldName: 'file',
+-                headers: {
+-                    'Accept': 'application/json',
+-                    'X-CSRF-TOKEN': '{{ csrf_token() }}',
+-                    'X-tenant': '{{ HlsVideos\Services\VideoService::getSubDomain() }}',
+-                },
+-                // You can add custom options for parallelism and retries
+-                parallelUploads: 5, // Limit to 5 parallel uploads
+-                // Other useful options:
+-                bundle: false, // must be false for chunked upload
+-                limit: 1, // upload 1 chunk at a time
+-                allowMultipleUploads: false
+-                // - withCredentials: true (if you need to send credentials with requests)
+-            });
++            if (HLS_UPLOAD.driver === 'direct') {
++                useDirectUpload();
++            } else {
++                // Legacy driver: the whole file is POSTed to PHP.
++                uppy.use(Uppy.XHRUpload, {
++                    endpoint: HLS_UPLOAD.baseUrl + '/hls/videos/upload',
++                    formData: true,
++                    fieldName: 'file',
++                    headers: HLS_UPLOAD.headers,
++                    bundle: false,
++                    limit: 1,
++                    allowMultipleUploads: false
++                });
++            }
+ 
+             // ========== إضافة أحداث الرفع ==========
+ 
+@@ -938,8 +1126,13 @@
+             });
+ 
+             uppy.on('upload-success', (file, response) => {
+-                videoId = response.body.video_id;
+-                setVideoOptionCard(response.body);
++                // Under the direct driver the card is already rendered from the
++                // /complete response; there is no PHP response body here.
++                if (HLS_UPLOAD.driver !== 'direct') {
++                    videoId = response.body.video_id;
++                    setVideoOptionCard(response.body);
++                }
++
+                 fireVideoUploadCompleteEvent(file, response);
+             });
+ 
+-- 
+2.43.0
+

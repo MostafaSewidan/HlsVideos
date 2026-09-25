@@ -9,13 +9,18 @@ use HlsVideos\Services\VideoService;
 class HlsVideo extends Model
 {
 
+    const PENDING_UPLOAD = 'pending_upload';
+    const UPLOAD_FAILED = 'upload_failed';
     const UPLOADED = 'uploaded';
     const PROCESSING = 'processing';
     const READY = 'ready';
     const ORIENTATION_PORTRAIT = 'P';
     const ORIENTATION_LANDSCAPE = 'L';
     protected $guarded = [];
-    public $casts = ['stream_data' => 'array'];
+    public $casts = [
+        'stream_data' => 'array',
+        'upload_started_at' => 'datetime',
+    ];
     public $incrementing = false;
     protected $keyType = 'string';
 
@@ -25,6 +30,18 @@ class HlsVideo extends Model
 
         static::created(function ($video) {
             $videoService = new VideoService;
+
+            // Direct-to-R2: the row exists so that its id can be used to build
+            // the storage key, but no bytes have been uploaded yet. Probing the
+            // file or starting the encoder here would act on nothing --
+            // DirectUploadController::complete() does both once the upload
+            // actually finishes.
+            if ($video->status === self::PENDING_UPLOAD) {
+                $videoService->protectVideo($video);
+
+                return;
+            }
+
             $videoService->createThumb($video);
             $videoService->getVideoDuration($video);
             $videoService->protectVideo($video);
@@ -33,10 +50,38 @@ class HlsVideo extends Model
 
         static::deleting(function ($video) {
             $video->qualities()->delete();
+
             foreach (config('hls-videos.storages') as $disk => $config) {
                 Storage::disk($disk)->deleteDirectory(VideoService::getMediaPath().$video->id);
             }
+
+            // The original lives under a different prefix than the HLS output
+            // and was previously left behind on every delete.
+            try {
+                $originalDisk = config('hls-videos.uploaded_videos_disk');
+                $prefix = trim(config('hls-videos.temp_videos_prefix', 'temp-videos'), '/');
+
+                Storage::disk($originalDisk)->deleteDirectory(
+                    $prefix.'/'.VideoService::getMediaPath().$video->id
+                );
+            } catch (\Exception $e) {
+                \Log::warning("Could not delete original for video {$video->id}: ".$e->getMessage());
+            }
         });
+    }
+
+    public function scopePendingUpload($query)
+    {
+        return $query->where('status', self::PENDING_UPLOAD);
+    }
+
+    /**
+     * Remote key of the original file. Prefers the value stored at init time,
+     * falling back to recomputing it for rows created by the legacy driver.
+     */
+    public function getOriginalKeyAttribute(): string
+    {
+        return $this->r2_key ?: VideoService::originalKey($this);
     }
 
     public function parentFolders()
