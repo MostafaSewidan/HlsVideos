@@ -412,7 +412,8 @@ class VideoService
 
                 $oldTsFilesUrl = "https://$subdomain.stepsio.com/api/vd/{$videoId}/stream/{$quality}/";
                 $content = str_replace($oldTsFilesUrl, '', $content);
-                $newTsFilesUrl = "https://stepsio-stream.org/$replacePath/{$quality}";
+                $storageStreamDomain = config('hls-videos.storage_stream_domain');
+                $newTsFilesUrl = "https://{$storageStreamDomain}/$replacePath/{$quality}";
                 $content = str_replace('index-', "$newTsFilesUrl/index-", $content);
                 $content = preg_replace('/URI="[^"]*secret\.key"/', 'URI="secret.key"', $content);
 
@@ -510,6 +511,7 @@ class VideoService
         $firstQ = $video->qualities()->oldest()->first();
         $path = self::getMediaPath()."$video->id/$firstQ->quality/vd.m3u8";
         $replacePath = self::getMediaPath().$video->id;
+        $storageStreamDomain = config('hls-videos.storage_stream_domain');
 
         $content = Storage::disk(config('hls-videos.stream_disk'))->get($path);
         $oldTsFilesUrl = route(config('hls-videos.access_route_stream'), [$video->id, $firstQ->quality]);
@@ -527,7 +529,7 @@ class VideoService
             ],
             "file_data" => [
                 'file_name' => 'vd.zip',
-                "donwload_url" => "https://stepsio-stream.org/$replacePath/vd.zip"
+                "donwload_url" => "https://{$storageStreamDomain}/$replacePath/vd.zip"
             ]
         ];
     }

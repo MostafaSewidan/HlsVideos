@@ -136,8 +136,10 @@ class HlsVideo extends Model
     {
         $stream = $this->stream_data;
         $thumbPath = VideoService::getMediaPath()."$this->id/thumb.jpg";
+        $storageStreamDomain = config('hls-videos.storage_stream_domain');
+
         if (isset($stream['thumb_disk'])) {
-            return "https://stepsio-stream.org/".$thumbPath;
+            return "https://{$storageStreamDomain}/".$thumbPath;
         } else {
             return Storage::disk(config('hls-videos.thumb_disk'))->url($thumbPath);
         }
@@ -183,7 +185,8 @@ class HlsVideo extends Model
 
     public function getOriginalVideoLinkAttribute()
     {
-        return "https://stepsio-stream.org/temp-videos/".VideoService::getMediaPath().$this->id."/{$this->file_name}";
+        $storageStreamDomain = config('hls-videos.storage_stream_domain');
+        return "https://{$storageStreamDomain}/temp-videos/".VideoService::getMediaPath().$this->id."/{$this->file_name}";
     }
 
     public function getIsSupportOriginalAttribute()
