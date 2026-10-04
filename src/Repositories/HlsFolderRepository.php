@@ -22,7 +22,7 @@ class HlsFolderRepository
         return $query;
     }
 
-    public static function mainSharedFolders($query)
+    public static function mainSharedFolders($query, $model = null)
     {
         return $query;
     }
