@@ -18,7 +18,7 @@ class DeleteHlsVideoFiles implements ShouldQueue
     public int $tries = 5;
     public array $backoff = [30, 120, 600];
 
-    public function __construct(public int $videoId) {}
+    public function __construct(public $videoId) {}
 
     public function handle(): void
     {
