@@ -22,6 +22,11 @@ Route::name('hls.videos.')
 | carry their own rate limit: the framework default of 60/minute is lower
 | than the number of parts in a single large upload and would stall it.
 */
+
+Route::get('/hls-videos/{video}/{quality}/download.zip', function ($video, $quality) {
+    return HlsVideos\Services\VideoService::StreamVideoZip($video, $quality);
+})->name('hls-videos.download-zip')->middleware('signed');
+
 Route::name('hls.videos.direct.')
     ->prefix('hls/videos/direct')
     ->middleware(array_merge(

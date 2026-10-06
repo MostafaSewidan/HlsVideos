@@ -12,6 +12,9 @@ use Illuminate\Support\Facades\Storage;
 use HlsVideos\Jobs\ConvertQualityJob;
 use Illuminate\Support\Str;
 use ProtoneMedia\LaravelFFMpeg\Exporters\HLSExporter;
+use Illuminate\Support\Facades\URL;
+use ZipStream\ZipStream;
+use ZipStream\CompressionMethod;
 
 class VideoService
 {
@@ -225,7 +228,7 @@ class VideoService
         if ($model)
             $model->hlsVideos()->attach([$video->id]);
 
-        $folder = config('hls-videos.repositories.hls_folder')::mainSharedFolders(HlsFolder::query(),$model)->first();
+        $folder = config('hls-videos.repositories.hls_folder')::mainSharedFolders(HlsFolder::query(), $model)->first();
         if ($folder) {
             $folder->videos()->attach(
                 $video->id,
@@ -272,7 +275,7 @@ class VideoService
             $model->hlsVideos()->attach([$video->id]);
         }
 
-        $folder = config('hls-videos.repositories.hls_folder')::mainSharedFolders(HlsFolder::query(),$model)->first();
+        $folder = config('hls-videos.repositories.hls_folder')::mainSharedFolders(HlsFolder::query(), $model)->first();
 
         if ($folder) {
             $folder->videos()->attach(
@@ -530,6 +533,71 @@ class VideoService
                 "donwload_url" => "https://{$storageStreamDomain}/$replacePath/vd.zip"
             ]
         ];
+    }
+
+    static function StreamDownloadCompressedVideo($localPath, $video)
+    {
+        $firstQ = $video->qualities()->oldest()->first();
+        $path = self::getMediaPath()."$video->id/$firstQ->quality/vd.m3u8";
+
+        $content = Storage::disk(config('hls-videos.stream_disk'))->get($path);
+        $oldTsFilesUrl = route(config('hls-videos.access_route_stream'), [$video->id, $firstQ->quality]);
+
+        $content = str_replace("$oldTsFilesUrl/", '', $content);
+        $newTsFilesUrl = "$localPath/.$video->id";
+        $content = str_replace('index-', "$newTsFilesUrl/index-", $content);
+        $secrtUri = route(config('hls-videos.access_route_stream'), [$video->id, $firstQ->quality, "secret.key"]);
+        $content = str_replace('secret.key', $secrtUri, $content);
+
+        // رابط مؤقت (6 ساعات) بيعمل الـ zip وقت التحميل بدل ملف vd.zip متخزّن
+        $downloadUrl = URL::temporarySignedRoute(
+            'hls-videos.download-zip',
+            now()->addHours(6),
+            ['video' => $video->id, 'quality' => $firstQ->quality]
+        );
+
+        return [
+            "playlist" => [
+                "file_name" => "index.m3u8",
+                "file_content" => $content
+            ],
+            "file_data" => [
+                'file_name' => 'vd.zip',
+                "donwload_url" => $downloadUrl
+            ]
+        ];
+    }
+
+    static function StreamVideoZip($videoId, $quality)
+    {
+        $disk = Storage::disk(config('hls-videos.stream_disk'));
+        $folder = self::getMediaPath()."$videoId/$quality";
+
+        // ملفات الـ ts بس (index-*) زي ما الـ playlist متوقعها
+        $files = collect($disk->files($folder))
+            ->filter(fn ($f) => str_starts_with(basename($f), 'index-'))
+            ->values();
+
+        abort_if($files->isEmpty(), 404);
+
+        return response()->streamDownload(function () use ($disk, $files) {
+            set_time_limit(0);
+
+            $zip = new ZipStream(
+                sendHttpHeaders: false,
+                defaultCompressionMethod: CompressionMethod::STORE,
+                defaultEnableZeroHeader: true,
+            );
+
+            foreach ($files as $file) {
+                $zip->addFileFromStream(
+                    fileName: basename($file),
+                    stream: $disk->readStream($file),
+                );
+            }
+
+            $zip->finish();
+        }, 'vd.zip', ['Content-Type' => 'application/zip']);
     }
 
     static function getTsFilesFromPlaylistFile($masterPlaylistFile)
