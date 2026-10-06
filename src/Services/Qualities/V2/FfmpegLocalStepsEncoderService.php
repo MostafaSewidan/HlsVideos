@@ -118,7 +118,7 @@ class FfmpegLocalStepsEncoderService
         });
 
         $this->uploadVideoToStorage();
-        CompressService::compressAndUploadVideo($this->video);
+        CompressService::compressAndUploadVideo($this->video,app('currentTenant'));
         $this->uploadFinished();
         return true;
         // } catch (\Throwable $th) {

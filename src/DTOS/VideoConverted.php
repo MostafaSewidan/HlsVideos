@@ -45,7 +45,7 @@ class VideoConverted
       if ($upcommingQuality) {
 
          if (! isset($this->video->stream_data['compress_video_status'])) {
-            CompressService::compressAndUploadVideo($this->video);
+            CompressService::compressAndUploadVideo($this->video,app('currentTenant'));
          }
          VideoService::createQualityFromConfig($this->video, $upcommingQuality);
       } else {
