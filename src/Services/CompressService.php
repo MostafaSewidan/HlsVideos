@@ -75,7 +75,7 @@ class CompressService
 
     static function compressAndUploadVideo(HlsVideo $video, $tenant = null)
     {
-        if ($tenant && in_array($tenant->id, [])) {
+        if ($tenant && in_array($tenant->id, [11, 42, 48, 5003])) {
             $qualities = config('hls-videos.qualities');
             $firstQuality = reset($qualities);
             $quality = $video->qualities()->where('quality', $firstQuality['quality'])->first();
