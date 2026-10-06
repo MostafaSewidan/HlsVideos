@@ -29,7 +29,13 @@ class DeleteHlsVideoFiles implements ShouldQueue
         $path = VideoService::getMediaPath().$this->videoId;
 
         foreach (array_keys(config('hls-videos.storages')) as $disk) {
-            throw_unless(Storage::disk($disk)->deleteDirectory($path),
+            $storage = Storage::disk($disk);
+
+            if (! $storage->exists($path)) {
+                continue;
+            }
+
+            throw_unless($storage->deleteDirectory($path),
                 new \RuntimeException("Failed {$disk}:{$path}"));
         }
 
