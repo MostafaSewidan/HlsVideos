@@ -5,6 +5,7 @@ namespace HlsVideos\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Storage;
 use HlsVideos\Services\VideoService;
+use HlsVideos\Jobs\DeleteHlsVideoFiles;
 
 class HlsVideo extends Model
 {
@@ -48,25 +49,8 @@ class HlsVideo extends Model
             $videoService->handleVideoQualities($video);
         });
 
-        static::deleting(function ($video) {
-            $video->qualities()->delete();
-
-            foreach (config('hls-videos.storages') as $disk => $config) {
-                Storage::disk($disk)->deleteDirectory(VideoService::getMediaPath().$video->id);
-            }
-
-            // The original lives under a different prefix than the HLS output
-            // and was previously left behind on every delete.
-            try {
-                $originalDisk = config('hls-videos.uploaded_videos_disk');
-                $prefix = trim(config('hls-videos.temp_videos_prefix', 'temp-videos'), '/');
-
-                Storage::disk($originalDisk)->deleteDirectory(
-                    $prefix.'/'.VideoService::getMediaPath().$video->id
-                );
-            } catch (\Exception $e) {
-                \Log::warning("Could not delete original for video {$video->id}: ".$e->getMessage());
-            }
+        static::deleted(function ($video) {
+            DeleteHlsVideoFiles::dispatch($video->id)->afterCommit();
         });
     }
 
