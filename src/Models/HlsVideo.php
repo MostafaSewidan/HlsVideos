@@ -50,7 +50,7 @@ class HlsVideo extends Model
         });
 
         static::deleted(function ($video) {
-            DeleteHlsVideoFiles::dispatch($video->id)->afterCommit();
+            DeleteHlsVideoFiles::dispatch($video->id,app('currentTenant'))->afterCommit();
         });
     }
 
