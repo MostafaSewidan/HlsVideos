@@ -20,10 +20,12 @@ class DeleteHlsVideoFiles implements ShouldQueue
     public int $tries = 5;
     public array $backoff = [30, 120, 600];
 
-    public function __construct(public $videoId) {}
+    public function __construct(public $videoId, protected $tenant) {}
 
     public function handle(): void
     {
+        $this->tenant->makeCurrent();
+
         $path = VideoService::getMediaPath().$this->videoId;
 
         foreach (array_keys(config('hls-videos.storages')) as $disk) {
