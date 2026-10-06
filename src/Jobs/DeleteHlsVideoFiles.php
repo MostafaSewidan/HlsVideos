@@ -10,6 +10,8 @@ use Illuminate\Queue\SerializesModels;
 use HlsVideos\Factories\VideoQualityProcessorFactory;
 use HlsVideos\Models\HlsVideo;
 use HlsVideos\Models\HlsVideoQuality;
+use HlsVideos\Services\VideoService;
+use Illuminate\Support\Facades\Storage;
 
 class DeleteHlsVideoFiles implements ShouldQueue
 {
