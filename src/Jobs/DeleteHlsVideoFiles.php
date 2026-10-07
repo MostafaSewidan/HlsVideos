@@ -44,6 +44,7 @@ class DeleteHlsVideoFiles implements ShouldQueue
             $prefix = trim(config('hls-videos.temp_videos_prefix', 'temp-videos'), '/');
             Storage::disk(config('hls-videos.uploaded_videos_disk'))
                 ->deleteDirectory("{$prefix}/{$path}");
+            $video->delete();
         }
     }
 }

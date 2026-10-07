@@ -48,10 +48,6 @@ class HlsVideo extends Model
             $videoService->protectVideo($video);
             $videoService->handleVideoQualities($video);
         });
-
-        static::deleting(function ($video) {
-            DeleteHlsVideoFiles::dispatch($video->id, app('currentTenant'))->afterCommit();
-        });
     }
 
     public function scopePendingUpload($query)
