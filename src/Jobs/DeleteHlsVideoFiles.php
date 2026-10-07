@@ -20,27 +20,32 @@ class DeleteHlsVideoFiles implements ShouldQueue
     public int $tries = 5;
     public array $backoff = [30, 120, 600];
 
-    public function __construct(public $videoId, protected $tenant) {}
+    public function __construct(public $videoId, protected $tenant)
+    {
+    }
 
     public function handle(): void
     {
         $this->tenant->makeCurrent();
+        $video = HlsVideo::findOrFail($this->videoId);
+        if ($this->videoId && $video) {
 
-        $path = VideoService::getMediaPath().$this->videoId;
+            $path = VideoService::getMediaPath().$video->id;
 
-        foreach (array_keys(config('hls-videos.storages')) as $disk) {
-            $storage = Storage::disk($disk);
+            foreach (array_keys(config('hls-videos.storages')) as $disk) {
+                $storage = Storage::disk($disk);
 
-            if (! $storage->exists($path)) {
-                continue;
+                if (! $storage->exists($path)) {
+                    continue;
+                }
+
+                throw_unless($storage->deleteDirectory($path),
+                    new \RuntimeException("Failed {$disk}:{$path}"));
             }
 
-            throw_unless($storage->deleteDirectory($path),
-                new \RuntimeException("Failed {$disk}:{$path}"));
+            $prefix = trim(config('hls-videos.temp_videos_prefix', 'temp-videos'), '/');
+            Storage::disk(config('hls-videos.uploaded_videos_disk'))
+                ->deleteDirectory("{$prefix}/{$path}");
         }
-
-        $prefix = trim(config('hls-videos.temp_videos_prefix', 'temp-videos'), '/');
-        Storage::disk(config('hls-videos.uploaded_videos_disk'))
-            ->deleteDirectory("{$prefix}/{$path}");
     }
 }
