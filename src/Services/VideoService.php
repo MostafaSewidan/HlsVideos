@@ -275,7 +275,8 @@ class VideoService
             $model->hlsVideos()->attach([$video->id]);
         }
 
-        $folder = config('hls-videos.repositories.hls_folder')::mainSharedFolders(HlsFolder::query(), $model)->first();
+        $folder = ($folderId ? HlsFolder::find($folderId) : null) ??
+            config('hls-videos.repositories.hls_folder')::mainSharedFolders(HlsFolder::query(), $model)->first();
 
         if ($folder) {
             $folder->videos()->attach(
