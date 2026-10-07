@@ -17,8 +17,6 @@ class DeleteHlsVideoFiles implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
-    public int $tries = 5;
-    public array $backoff = [30, 120, 600];
 
     public function __construct(public $videoId, protected $tenant)
     {
