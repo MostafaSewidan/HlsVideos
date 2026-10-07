@@ -49,8 +49,8 @@ class HlsVideo extends Model
             $videoService->handleVideoQualities($video);
         });
 
-        static::deleted(function ($video) {
-            DeleteHlsVideoFiles::dispatch($video->id,app('currentTenant'))->afterCommit();
+        static::deleting(function ($video) {
+            DeleteHlsVideoFiles::dispatch($video->id, app('currentTenant'))->afterCommit();
         });
     }
 
