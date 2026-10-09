@@ -292,14 +292,17 @@
 
     document.addEventListener("DOMContentLoaded", function() {
         const video = document.getElementById("player");
-        video.addEventListener('loadedmetadata', function() {
-            adjustContainerForPortrait(video);
-        });
+        if (video) {
 
-        if (videoType === 'hls') {
-            videoPlayerIoRun();
-        } else {
-            initNativePlayer();
+            video.addEventListener('loadedmetadata', function() {
+                adjustContainerForPortrait(video);
+            });
+
+            if (videoType === 'hls') {
+                videoPlayerIoRun();
+            } else {
+                initNativePlayer();
+            }
         }
     });
 
