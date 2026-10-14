@@ -4,6 +4,7 @@ use HlsVideos\Http\Controllers\DirectUploadController;
 use HlsVideos\Http\Controllers\HlsVideoController;
 use HlsVideos\Http\Controllers\HlsFolderController;
 use HlsVideos\Http\Controllers\HlsFolderVideoController;
+use HlsVideos\Http\Controllers\VideoExportController;
 
 $middleware = config('hls-videos.uploader_access_middleware') ? explode(',', config('hls-videos.uploader_access_middleware')) : [];
 
@@ -22,6 +23,22 @@ Route::name('hls.videos.')
 | carry their own rate limit: the framework default of 60/minute is lower
 | than the number of parts in a single large upload and would stall it.
 */
+
+/*
+| MP4 download of a library video (Mp4ExportService). These hand out the
+| video unencrypted, so they sit behind their own middleware
+| (exports.middleware), which the app must set to its dashboard auth.
+*/
+Route::middleware(config('hls-videos.exports.middleware', ['web']))
+    ->name('hls.videos.exports.')
+    ->prefix('hls/videos')
+    ->group(function () {
+        Route::get('{videoId}/exports', [VideoExportController::class, 'index'])->name('index');
+        Route::post('{videoId}/exports', [VideoExportController::class, 'store'])->name('store');
+        Route::get('exports/{exportId}/download', [VideoExportController::class, 'download'])
+            ->whereNumber('exportId')
+            ->name('download');
+    });
 
 Route::get('/hls-videos/{video}/{quality}/download.zip', function ($video, $quality) {
     return HlsVideos\Services\VideoService::StreamVideoZip($video, $quality);

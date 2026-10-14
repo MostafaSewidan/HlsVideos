@@ -104,6 +104,35 @@ return [
         'authorize' => null,
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | MP4 exports (download a library video as MP4)
+    |--------------------------------------------------------------------------
+    | An export remuxes one HLS quality into an MP4 (no re-encode) and caches it.
+    |
+    | disk                 where the MP4s go. null = stream_disk. Files sit under
+    |                      {media}/{video}/exports/{random}/, so DeleteHlsVideoFiles
+    |                      removes them with the video, and the random part keeps
+    |                      the path unguessable on a publicly served bucket.
+    | ttl_days             how long a ready MP4 is kept; each new request for it
+    |                      pushes this back. Run `hls-videos:prune-exports` daily.
+    | queue                its own queue, so exports never delay encoding. Needs
+    |                      a worker with ffmpeg and room for one video in temp_disk.
+    | stale_after_minutes  a pending/processing export older than this is taken
+    |                      as a dead worker and may be dispatched again.
+    | middleware           MUST be the app's dashboard auth: the MP4 is not
+    |                      encrypted.
+    */
+    'exports' => [
+        'disk' => env('HLS_VIDEO_EXPORT_DISK'),
+        'ttl_days' => (int) env('HLS_VIDEO_EXPORT_TTL_DAYS', 7),
+        'url_ttl_minutes' => 60,
+        'queue' => env('HLS_VIDEO_EXPORT_QUEUE', 'hls-video-exports'),
+        'timeout' => 3600,
+        'stale_after_minutes' => 120,
+        'middleware' => ['web'],
+    ],
+
     'storages' => [
         'r2' => [
             'disk_name' => 'r2',

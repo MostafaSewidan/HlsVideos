@@ -41,6 +41,11 @@ class DeleteHlsVideoFiles implements ShouldQueue
                     new \RuntimeException("Failed {$disk}:{$path}"));
             }
 
+            // MP4 exports on a disk other than the storages above.
+            foreach ($video->exports()->whereNotNull('path')->get() as $export) {
+                Storage::disk($export->disk)->delete($export->path);
+            }
+
             $prefix = trim(config('hls-videos.temp_videos_prefix', 'temp-videos'), '/');
             Storage::disk(config('hls-videos.uploaded_videos_disk'))
                 ->deleteDirectory("{$prefix}/{$path}");

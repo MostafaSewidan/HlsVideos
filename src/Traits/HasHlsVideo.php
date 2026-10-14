@@ -1,5 +1,5 @@
 <?php
-namespace  HlsVideos\Traits;
+namespace HlsVideos\Traits;
 
 use HlsVideos\Models\HlsVideo;
 use Illuminate\Database\Eloquent\Relations\MorphOne;
@@ -9,12 +9,17 @@ trait HasHlsVideo
 {
     public function hlsVideos(): MorphToMany
     {
-        return $this->morphToMany(HlsVideo::class, 'videoable','hls_videoables','videoable_id','hls_video_id');
+        return $this->morphToMany(HlsVideo::class, 'videoable', 'hls_videoables', 'videoable_id', 'hls_video_id');
     }
 
     public function hlsVideo()
     {
         return $this->hlsVideos()->limit(1);
+    }
+
+    public function getAcceptedHlsVideo()
+    {
+        return $this->hlsVideos()->whereNotIn('status', [HlsVideo::UPLOAD_FAILED])->first();
     }
 
     public function getHlsVideo()

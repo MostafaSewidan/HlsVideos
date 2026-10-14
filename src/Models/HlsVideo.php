@@ -81,6 +81,11 @@ class HlsVideo extends Model
         return $this->hasMany(HlsVideoQuality::class, 'hls_video_id');
     }
 
+    public function exports()
+    {
+        return $this->hasMany(HlsVideoExport::class, 'hls_video_id');
+    }
+
     // This relation is likely incorrect.
     // If you want to get all models (of any type) that are related to this HlsVideo,
     // you should use morphToMany, not morphByMany, and the related model should not be HlsVideo itself.
