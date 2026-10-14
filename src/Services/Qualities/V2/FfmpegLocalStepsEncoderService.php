@@ -20,6 +20,7 @@ class FfmpegLocalStepsEncoderService
     protected $video;
     protected $headers;
     protected ?array $sourceDimensions = null;
+    protected array $qualityTargets = [];
 
 
     public function convertVideo($videoFile, HlsVideo $video)
@@ -29,23 +30,24 @@ class FfmpegLocalStepsEncoderService
         $this->video = $video;
         AppHlsVideoQuality::where('hls_video_id', $this->video->id)->delete();
 
-        foreach (config('hls-videos.qualities') as $configQuality) {
-            AppHlsVideoQuality::create([
-                'hls_video_id' => $this->video->id,
-                'quality' => $configQuality['quality'],
-                'convert_service' => $configQuality['convert_service'],
-                'status' => AppHlsVideoQuality::CONVERTING,
-            ]);
-        }
-
-        $this->qualities = AppHlsVideoQuality::where('hls_video_id', $this->video->id)->get();
-
+        // The source is needed before the quality rows: their labels depend on its size.
         $this->downloadVideoFromUploadedVideosDisk();
 
         if ($this->needsNormalization()) {
             \Log::info("Normalizing video", ['video' => $this->video->id]);
             $this->normalizeVideoFps();
         }
+
+        foreach ($this->resolveQualityTargets() as $target) {
+            AppHlsVideoQuality::create([
+                'hls_video_id' => $this->video->id,
+                'quality' => $target['quality'],
+                'convert_service' => $target['convert_service'],
+                'status' => AppHlsVideoQuality::CONVERTING,
+            ]);
+        }
+
+        $this->qualities = AppHlsVideoQuality::where('hls_video_id', $this->video->id)->get();
 
         $this->saveVideoOrientationType();
 
@@ -178,15 +180,66 @@ class FfmpegLocalStepsEncoderService
         $this->video->refresh();
     }
 
-    protected function getQualitySettings($quality)
+    protected function getTierSettings($quality): array
     {
-        [$shortEdge, $videoKbps] = match ($quality) {
+        return match ((string) $quality) {
             '1080' => [1080, 3000],
             '720' => [720, 1500],
             '480' => [480, 500],
             '360' => [360, 400],
             default => [720, 1000],
         };
+    }
+
+    /**
+     * Builds the quality ladder from the configured tiers, fitted to the source.
+     * A tier above the source is replaced by the source's own height, so a 640p
+     * upload gives 640/480/360 and a 1080p one gives 720/480/360. Tiers that
+     * collapse onto the same height are encoded once, at the lowest tier's bitrate.
+     */
+    protected function resolveQualityTargets(): array
+    {
+        [$srcW, $srcH] = $this->getSourceDimensions();
+        $srcShort = min($srcW, $srcH);
+        $srcShort -= $srcShort % 2;
+
+        $tiers = collect(config('hls-videos.qualities'))
+            ->map(function ($configQuality) {
+                [$shortEdge, $videoKbps] = $this->getTierSettings($configQuality['quality']);
+
+                return $configQuality + ['short_edge' => $shortEdge, 'kbps' => $videoKbps];
+            })
+            ->sortBy('short_edge');
+
+        $targets = [];
+        foreach ($tiers as $tier) {
+            $shortEdge = min($tier['short_edge'], $srcShort);
+            $label = (string) $shortEdge;
+
+            if (isset($targets[$label])) {
+                continue;
+            }
+
+            $targets[$label] = [
+                'quality' => $label,
+                'convert_service' => $tier['convert_service'],
+                'short_edge' => $shortEdge,
+                'kbps' => $tier['kbps'],
+            ];
+        }
+
+        krsort($targets, SORT_NUMERIC);
+
+        return $this->qualityTargets = $targets;
+    }
+
+    protected function getQualitySettings($quality)
+    {
+        if (isset($this->qualityTargets[(string) $quality])) {
+            ['short_edge' => $shortEdge, 'kbps' => $videoKbps] = $this->qualityTargets[(string) $quality];
+        } else {
+            [$shortEdge, $videoKbps] = $this->getTierSettings($quality);
+        }
 
         [$srcW, $srcH] = $this->getSourceDimensions();
         $isPortrait = $srcH > $srcW;

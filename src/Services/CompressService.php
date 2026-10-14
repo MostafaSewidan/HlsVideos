@@ -8,11 +8,21 @@ use HlsVideos\Services\VideoService;
 
 class CompressService
 {
+    /**
+     * The configured top quality, or -- when the encoder relabelled it to fit a
+     * smaller source (e.g. 720 -> 640) -- the video's highest quality.
+     */
+    private static function findTopQuality(HlsVideo $video, $configQuality)
+    {
+        return $video->qualities()->where('quality', $configQuality)->first()
+            ?? $video->qualities()->get()->sortByDesc(fn ($quality) => (int) $quality->quality)->first();
+    }
+
     static function compressVideoFolder(HlsVideo $video)
     {
         $qualities = config('hls-videos.qualities');
         $firstQuality = reset($qualities);
-        $quality = $video->qualities()->where('quality', $firstQuality['quality'])->first();
+        $quality = self::findTopQuality($video, $firstQuality['quality']);
         $folder = VideoService::getMediaPath()."{$video->id}/{$quality->quality}";
         $tempDisk = Storage::disk(config('hls-videos.temp_disk'));
         $allFiles = $tempDisk->allFiles($folder);
@@ -78,7 +88,7 @@ class CompressService
         if ($tenant && in_array($tenant->id, [11, 42, 48, 5005])) {
             $qualities = config('hls-videos.qualities');
             $firstQuality = reset($qualities);
-            $quality = $video->qualities()->where('quality', $firstQuality['quality'])->first();
+            $quality = self::findTopQuality($video, $firstQuality['quality']);
             $folder = VideoService::getMediaPath()."{$video->id}/{$quality->quality}";
             $tempDisk = Storage::disk(config('hls-videos.temp_disk'));
 
