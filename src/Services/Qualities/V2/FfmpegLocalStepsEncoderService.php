@@ -8,10 +8,10 @@ use App\Models\HlsVideoQuality as AppHlsVideoQuality;
 use FFMpeg;
 use FFMpeg\Format\Video\X264;
 use HlsVideos\Services\VideoService;
-use HlsVideos\Services\CompressService;
 use HlsVideos\Models\HlsVideo;
 use Illuminate\Support\Facades\Event;
 use HlsVideos\Events\VideoConvertedEvent;
+use HlsVideos\Jobs\V2\UploadCompressedVideo;
 
 class FfmpegLocalStepsEncoderService
 {
@@ -25,7 +25,7 @@ class FfmpegLocalStepsEncoderService
 
     public function convertVideo($videoFile, HlsVideo $video)
     {
-        // try {
+        try {
         $videoSerivce = new VideoService();
         $this->video = $video;
         AppHlsVideoQuality::where('hls_video_id', $this->video->id)->delete();
@@ -120,14 +120,14 @@ class FfmpegLocalStepsEncoderService
         });
 
         $this->uploadVideoToStorage();
-        CompressService::compressAndUploadVideo($this->video,app('currentTenant'));
+        UploadCompressedVideo::dispatch($this->video, app('currentTenant'))->onQueue('compress');
         $this->uploadFinished();
         return true;
-        // } catch (\Throwable $th) {
-        //     throw $th;
-        //     \Log::error("FAILED FfmpegService: {$th->getMessage()}");
-        //     return new VideoConverted($this->video->qualities()->first());
-        // }
+        } catch (\Throwable $th) {
+            throw $th;
+            \Log::error("FAILED FfmpegService: {$th->getMessage()}");
+            return new VideoConverted($this->video->qualities()->first());
+        }
     }
 
     protected function getSourceDimensions(): array
@@ -369,9 +369,6 @@ class FfmpegLocalStepsEncoderService
         $this->video->update(['status' => HlsVideo::READY]);
         $this->video->refresh();
         $this->video->qualities()->update(['status' => HlsVideoQuality::READY]);
-
-        \Storage::disk(config('hls-videos.temp_disk'))->deleteDirectory(VideoService::getMediaPath().$this->video->id);
-        \Storage::disk(config('hls-videos.uploaded_videos_disk'))->deleteDirectory("temp-videos/".VideoService::getMediaPath()."{$this->video->id}");
         Event::dispatch(new VideoConvertedEvent($this->video, app('currentTenant')));
     }
     protected function normalizeVideoFps(): void

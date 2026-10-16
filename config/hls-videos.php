@@ -43,6 +43,9 @@ return [
     'tenant_model' => null,
     'convert_quality_queue_name' => env("HLS_VIDEO_CONVERT_QUEUE", 'default'),
 
+    // How many files are uploaded to R2 at the same time after a video is converted.
+    'upload_concurrency' => (int) env("HLS_VIDEO_UPLOAD_CONCURRENCY", 20),
+
     /*
     |--------------------------------------------------------------------------
     | Upload driver
