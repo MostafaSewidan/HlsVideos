@@ -46,6 +46,14 @@ return [
     // How many files are uploaded to R2 at the same time after a video is converted.
     'upload_concurrency' => (int) env("HLS_VIDEO_UPLOAD_CONCURRENCY", 20),
 
+    // Normalize variable/too-high frame rates inside the HLS encode instead of a
+    // separate full re-encode first. Set to false to go back to the separate pass.
+    'inline_fps_normalization' => (bool) env("HLS_VIDEO_INLINE_FPS_NORMALIZATION", true),
+
+    // Sources above this frame rate are encoded at 30fps. 60 = keep 60fps videos
+    // as they are; 30 = also bring 60fps recordings down to 30 (about half the encode time).
+    'max_fps' => (int) env("HLS_VIDEO_MAX_FPS", 30),
+
     /*
     |--------------------------------------------------------------------------
     | Upload driver

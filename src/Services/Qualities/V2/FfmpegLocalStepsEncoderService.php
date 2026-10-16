@@ -21,6 +21,10 @@ class FfmpegLocalStepsEncoderService
     protected $headers;
     protected ?array $sourceDimensions = null;
     protected array $qualityTargets = [];
+    protected ?array $sourceFps = null;
+
+    /** Frame rate every normalized video is encoded at. */
+    protected const NORMALIZED_FPS = 30;
 
 
     public function convertVideo($videoFile, HlsVideo $video)
@@ -33,9 +37,22 @@ class FfmpegLocalStepsEncoderService
         // The source is needed before the quality rows: their labels depend on its size.
         $this->downloadVideoFromUploadedVideosDisk();
 
-        if ($this->needsNormalization()) {
-            \Log::info("Normalizing video", ['video' => $this->video->id]);
-            $this->normalizeVideoFps();
+        // Normalizing used to be a full separate encode before the HLS encode.
+        // With inline normalization on, the HLS encode itself outputs constant
+        // NORMALIZED_FPS instead, so the video is encoded once.
+        $needsFpsNormalization = $this->needsNormalization();
+        $inlineFpsNormalization = $needsFpsNormalization && config('hls-videos.inline_fps_normalization', true);
+
+        if ($needsFpsNormalization) {
+            \Log::info('Normalizing video fps', [
+                'video' => $this->video->id,
+                'mode' => $inlineFpsNormalization ? 'inline' : 'separate-pass',
+                'source_fps' => $this->sourceFps,
+            ]);
+
+            if (! $inlineFpsNormalization) {
+                $this->normalizeVideoFps();
+            }
         }
 
         foreach ($this->resolveQualityTargets() as $target) {
@@ -69,18 +86,26 @@ class FfmpegLocalStepsEncoderService
         foreach ($this->qualities as $quality) {
 
             [$width, $height, $videoKbps] = $this->getQualitySettings($quality->quality);
+            $params = [
+                '-preset', 'ultrafast',
+                '-tune', 'fastdecode',
+                '-profile:v', 'main',
+                '-pix_fmt', 'yuv420p',
+                '-maxrate', $videoKbps.'k',
+                '-bufsize', ($videoKbps * 4).'k',
+                '-threads', '0',
+            ];
+
+            if ($inlineFpsNormalization) {
+                // Constant output frame rate: frames are duplicated/dropped by timestamp,
+                // which is what the old `-vf fps=30 -vsync cfr` pass did. Needs ffmpeg >= 5.1.
+                array_push($params, '-r', (string) self::NORMALIZED_FPS, '-fps_mode', 'cfr');
+            }
+
             $format = (new X264('aac'))
                 ->setKiloBitrate($videoKbps)
                 ->setAudioKiloBitrate(128)
-                ->setAdditionalParameters([
-                    '-preset', 'ultrafast',
-                    '-tune', 'fastdecode',
-                    '-profile:v', 'main',
-                    '-pix_fmt', 'yuv420p',
-                    '-maxrate', $videoKbps.'k',
-                    '-bufsize', ($videoKbps * 4).'k',
-                    '-threads', '0',
-                ]);
+                ->setAdditionalParameters($params);
 
             $transcode->addFormat($format, function ($media) use ($width, $height) {
                 $media->scale($width, $height);
@@ -102,9 +127,18 @@ class FfmpegLocalStepsEncoderService
             $playlist(VideoService::getMediaPath()."{$videoId}/{$label}-vd.m3u8");
         });
 
+        $encodeStartedAt = microtime(true);
         $transcode
             ->toDisk(config('hls-videos.temp_disk'))
             ->save(VideoService::getMediaPath()."{$videoId}/index.m3u8");
+
+        \Log::info('HLS encode finished', [
+            'video' => $videoId,
+            'seconds' => round(microtime(true) - $encodeStartedAt, 1),
+            'duration' => $this->video->stream_data['duration'] ?? null,
+            'fps_normalization' => $needsFpsNormalization ? ($inlineFpsNormalization ? 'inline' : 'separate-pass') : 'none',
+            'source_fps' => $this->sourceFps,
+        ]);
 
         $this->handlePlaylists();
 
@@ -380,7 +414,7 @@ class FfmpegLocalStepsEncoderService
         $tempOutput = $localDisk->path(VideoService::getMediaPath()."{$this->video->id}/temp_normalized.mp4");
 
         // Normalize to temp file first (can't overwrite input while FFmpeg is reading it)
-        $cmd = "/usr/bin/ffmpeg -y -i {$fullSource} -vf fps=30 -vsync cfr -c:v libx264 -preset ultrafast -c:a aac -movflags +faststart {$tempOutput}";
+        $cmd = '/usr/bin/ffmpeg -y -i '.escapeshellarg($fullSource).' -vf fps='.self::NORMALIZED_FPS.' -fps_mode cfr -c:v libx264 -preset ultrafast -c:a aac -movflags +faststart '.escapeshellarg($tempOutput);
         exec($cmd, $output, $returnCode);
 
         if ($returnCode !== 0) {
@@ -396,7 +430,7 @@ class FfmpegLocalStepsEncoderService
         $sourcePath = VideoService::getMediaPath()."{$this->video->id}/{$this->video->file_name}";
         $fullSource = \Storage::disk(config('hls-videos.temp_disk'))->path($sourcePath);
 
-        $cmd = "/usr/bin/ffprobe -v error -select_streams v:0 -show_entries stream=r_frame_rate,avg_frame_rate -of json {$fullSource}";
+        $cmd = '/usr/bin/ffprobe -v error -select_streams v:0 -show_entries stream=r_frame_rate,avg_frame_rate -of json '.escapeshellarg($fullSource);
         exec($cmd, $output, $returnCode);
 
         if ($returnCode !== 0) {
@@ -410,18 +444,31 @@ class FfmpegLocalStepsEncoderService
             return false;
         }
 
-        // Parse r_frame_rate (e.g. "90000/1" → 90000)
-        [$rNum, $rDen] = explode('/', $stream['r_frame_rate']);
-        $rFps = $rDen > 0 ? $rNum / $rDen : 0;
+        // e.g. "90000/1" -> 90000, "250646777/3493015" -> 71.75
+        $rFps = $this->parseFrameRate($stream['r_frame_rate'] ?? null);
+        $avgFps = $this->parseFrameRate($stream['avg_frame_rate'] ?? null);
+        $this->sourceFps = ['r' => round($rFps, 3), 'avg' => round($avgFps, 3)];
 
-        // Parse avg_frame_rate (e.g. "250646777/3493015" → 71.75)
-        [$aNum, $aDen] = explode('/', $stream['avg_frame_rate']);
-        $avgFps = $aDen > 0 ? $aNum / $aDen : 0;
+        // Anything above this is brought down to NORMALIZED_FPS. 60 keeps 60fps
+        // sources as they are; 30 also halves the encode work for 60fps recordings.
+        $maxFps = (float) config('hls-videos.max_fps', 60);
 
-        // Flag as needing normalization if:
-        $tooHighFps = $rFps > 60;                              // declared fps is unrealistic
+        $tooHighFps = $rFps > $maxFps + 0.5;   // declared fps is unrealistic or above the cap (+0.5 tolerates 59.94/29.97)
         $vfrDetected = $avgFps > 0 && abs($rFps - $avgFps) / max($avgFps, 1) > 0.2; // r_fps and avg_fps differ by >20%
 
         return $tooHighFps || $vfrDetected;
+    }
+
+    private function parseFrameRate(?string $rate): float
+    {
+        if (! $rate) {
+            return 0.0;
+        }
+
+        $parts = explode('/', $rate, 2);
+        $num = (float) $parts[0];
+        $den = isset($parts[1]) ? (float) $parts[1] : 1.0;
+
+        return $den > 0 ? $num / $den : 0.0;
     }
 }
