@@ -83,9 +83,14 @@ class CompressService
         $zip->close();
     }
 
+    static function shouldCompress($tenant): bool
+    {
+        return $tenant && in_array((int) $tenant->id, config('hls-videos.compress_tenant_ids', []), true);
+    }
+
     static function compressAndUploadVideo(HlsVideo $video, $tenant = null)
     {
-        if ($tenant && in_array($tenant->id, [11, 42, 48, 5005])) {
+        if (self::shouldCompress($tenant)) {
             $qualities = config('hls-videos.qualities');
             $firstQuality = reset($qualities);
             $quality = self::findTopQuality($video, $firstQuality['quality']);

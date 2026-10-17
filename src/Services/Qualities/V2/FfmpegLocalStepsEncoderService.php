@@ -2,6 +2,8 @@
 
 namespace HlsVideos\Services\Qualities\V2;
 
+use HlsVideos\Services\CompressService;
+
 use HlsVideos\DTOS\VideoConverted;
 use HlsVideos\Models\HlsVideoQuality;
 use App\Models\HlsVideoQuality as AppHlsVideoQuality;
@@ -29,7 +31,6 @@ class FfmpegLocalStepsEncoderService
 
     public function convertVideo($videoFile, HlsVideo $video)
     {
-        try {
         $videoSerivce = new VideoService();
         $this->video = $video;
         AppHlsVideoQuality::where('hls_video_id', $this->video->id)->delete();
@@ -154,14 +155,16 @@ class FfmpegLocalStepsEncoderService
         });
 
         $this->uploadVideoToStorage();
-        UploadCompressedVideo::dispatch($this->video, app('currentTenant'))->onQueue('compress');
+
+        if (CompressService::shouldCompress(app('currentTenant'))) {
+            UploadCompressedVideo::dispatch($this->video, app('currentTenant'))->onQueue('compress');
+        } else {
+            VideoService::deleteLocalWorkingFiles($this->video);
+            VideoService::deleteRemoteOriginal($this->video);
+        }
+
         $this->uploadFinished();
         return true;
-        } catch (\Throwable $th) {
-            throw $th;
-            \Log::error("FAILED FfmpegService: {$th->getMessage()}");
-            return new VideoConverted($this->video->qualities()->first());
-        }
     }
 
     protected function getSourceDimensions(): array

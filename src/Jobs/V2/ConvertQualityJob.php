@@ -9,6 +9,7 @@ use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use HlsVideos\Services\Qualities\V2\FfmpegLocalStepsEncoderService;
 use HlsVideos\Models\HlsVideo;
+use HlsVideos\Services\VideoService;
 use Illuminate\Support\Facades\Log;
 
 use Illuminate\Support\Facades\Event;
@@ -39,8 +40,8 @@ class ConvertQualityJob implements ShouldQueue
                 'message' => $e->getMessage(),
                 'trace' => $e->getTraceAsString(),
             ]);
-            Event::dispatch(new VideoConvertedErrorEvent($this->video, app('currentTenant'), $e->getMessage()));
 
+            // failed() reports it; reporting here too sent the master "failed" twice.
             throw $e;
         }
     }
@@ -52,8 +53,14 @@ class ConvertQualityJob implements ShouldQueue
             'message' => $e->getMessage(),
         ]);
         $this->tenant->makeCurrent();
-        Event::dispatch(new VideoConvertedErrorEvent($this->video, app('currentTenant'), $e->getMessage()));
 
-        // Optionally: update $this->video status, notify, etc.
+        // The source is re-downloaded on retry; the R2 original stays for it.
+        try {
+            VideoService::deleteLocalWorkingFiles($this->video);
+        } catch (\Throwable $cleanupError) {
+            Log::warning('ConvertQualityJob cleanup failed', ['video_id' => $this->video->id, 'message' => $cleanupError->getMessage()]);
+        }
+
+        Event::dispatch(new VideoConvertedErrorEvent($this->video, app('currentTenant'), $e->getMessage()));
     }
 }

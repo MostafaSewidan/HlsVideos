@@ -25,9 +25,9 @@ class UploadCompressedVideo implements ShouldQueue
             $this->tenant->makeCurrent();
             CompressService::compressAndUploadVideo($this->video, $this->tenant);
 
-            \Storage::disk(config('hls-videos.temp_disk'))->deleteDirectory(VideoService::getMediaPath().$this->video->id);
-            \Storage::disk(config('hls-videos.uploaded_videos_disk'))->deleteDirectory("temp-videos/".VideoService::getMediaPath()."{$this->video->id}");
-            } catch (\Throwable $e) {
+            VideoService::deleteLocalWorkingFiles($this->video);
+            VideoService::deleteRemoteOriginal($this->video);
+        } catch (\Throwable $e) {
             Log::error('UploadCompressedVideo failed', [
                 'video_id' => $this->video->id,
                 'message' => $e->getMessage(),
@@ -35,5 +35,17 @@ class UploadCompressedVideo implements ShouldQueue
             ]);
             throw $e;
         }
+    }
+
+    /**
+     * The video is already READY; without this a failed zip leaves the HLS output
+     * on the encoder's disk and the original in temp-videos/ for good.
+     */
+    public function failed(\Throwable $e): void
+    {
+        $this->tenant->makeCurrent();
+        VideoService::deleteLocalWorkingFiles($this->video);
+        //in the biggning i need to keep the original , if we have problem i can solve it and try again with it 
+        // VideoService::deleteRemoteOriginal($this->video);
     }
 }

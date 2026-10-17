@@ -105,6 +105,23 @@ class VideoService
     }
 
     /**
+     * Local working folder of a video on the encoder (source download + HLS output).
+     */
+    static function deleteLocalWorkingFiles(HlsVideo $video): void
+    {
+        \Storage::disk(config('hls-videos.temp_disk'))->deleteDirectory(self::getMediaPath().$video->id);
+    }
+
+    /**
+     * The uploaded original under temp-videos/ on the remote disk. Only safe once
+     * the video is READY: a failed encode is retried from it.
+     */
+    static function deleteRemoteOriginal(HlsVideo $video): void
+    {
+        \Storage::disk(config('hls-videos.uploaded_videos_disk'))->deleteDirectory("temp-videos/".self::getMediaPath()."{$video->id}");
+    }
+
+    /**
      * Single source of truth for where the ORIGINAL video file lives on the
      * remote disk. Built server side from the video row -- never from request
      * input -- so a client cannot steer a signed upload at an arbitrary path.

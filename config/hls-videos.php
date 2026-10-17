@@ -54,6 +54,10 @@ return [
     // as they are; 30 = also bring 60fps recordings down to 30 (about half the encode time).
     'max_fps' => (int) env("HLS_VIDEO_MAX_FPS", 30),
 
+    // Tenants that get a zip of the top quality after conversion. Everyone else
+    // has their temp files removed as soon as the video is READY.
+    'compress_tenant_ids' => array_map('intval', array_filter(explode(',', env("HLS_VIDEO_COMPRESS_TENANT_IDS", '11,42,48,5005')))),
+
     /*
     |--------------------------------------------------------------------------
     | Upload driver
