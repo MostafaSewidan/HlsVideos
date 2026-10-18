@@ -26,7 +26,7 @@ class InitDirectUploadRequest extends FormRequest
     public function messages()
     {
         return [
-            'size.max' => 'الملف أكبر من الحد المسموح به.',
+            'size.max' => 'الملف أكبر من الحد المسموح به ('.round(config('hls-videos.direct_upload.max_file_size') / 1024 / 1024).' ميجا).',
         ];
     }
 

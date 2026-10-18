@@ -98,7 +98,7 @@ return [
         'part_size' => (int) env("HLS_VIDEO_PART_SIZE", 32 * 1024 * 1024),
 
         // Hard ceiling enforced both in the browser and in /init.
-        'max_file_size' => (int) env("HLS_VIDEO_MAX_FILE_SIZE", 3 * 1024 * 1024 * 1024),
+        'max_file_size' => (int) env("HLS_VIDEO_MAX_FILE_SIZE", 1400 * 1024 * 1024),
 
         // Lifetime of each presigned UploadPart URL.
         'url_ttl_minutes' => (int) env("HLS_VIDEO_URL_TTL", 30),
