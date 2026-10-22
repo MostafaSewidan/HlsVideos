@@ -22,13 +22,18 @@ class VideoService
     {
 
         if (config('hls-videos.take_thumbnail')) {
+            $thumbPath = VideoService::getMediaPath()."$video->id/thumb.jpg";
 
-            FFMpeg::fromDisk(config('hls-videos.temp_disk'))
-                ->open($video->temp_video_path)
-                ->getFrameFromSeconds(3)
-                ->export()
-                ->toDisk(config('hls-videos.thumb_disk'))
-                ->save(VideoService::getMediaPath()."$video->id/thumb.jpg");
+            // A retried encode finds the thumbnail of the earlier attempt; saving
+            // over it throws FileExistsException, so the existing one is kept.
+            if (! \Storage::disk(config('hls-videos.thumb_disk'))->exists($thumbPath)) {
+                FFMpeg::fromDisk(config('hls-videos.temp_disk'))
+                    ->open($video->temp_video_path)
+                    ->getFrameFromSeconds(3)
+                    ->export()
+                    ->toDisk(config('hls-videos.thumb_disk'))
+                    ->save($thumbPath);
+            }
 
             $stream = $video->stream_data;
             $stream['thumb_disk'] = config('hls-videos.thumb_disk');
