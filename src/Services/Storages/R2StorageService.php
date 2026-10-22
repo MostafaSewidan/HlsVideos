@@ -57,13 +57,14 @@ class R2StorageService implements VideoStorageInterface
             throw new \Exception("upload Results Failed: no files found in {$videoRoot}");
         }
 
-        // Older Laravel versions do not expose the S3 client: keep the old behaviour there.
-        if (! method_exists($r2Disk, 'getClient')) {
+        $client = $this->s3Client($r2Disk);
+
+        // Not an S3 disk: keep the old one-by-one behaviour there.
+        if ($client === null) {
             return $this->uploadSequentially($allFiles, $r2Disk, $tempDisk);
         }
 
         $diskConfig = config("filesystems.disks.{$diskName}", []);
-        $client = $r2Disk->getClient();
         $bucket = $diskConfig['bucket'];
         $root = trim($diskConfig['root'] ?? '', '/');
         $concurrency = (int) config('hls-videos.upload_concurrency', 20);
@@ -93,6 +94,26 @@ class R2StorageService implements VideoStorageInterface
         ]);
 
         return true;
+    }
+
+    /**
+     * The disk's S3 client. Laravel 9+ exposes it on the disk; Laravel 8 (the
+     * encoder nodes) only through the Flysystem 1 adapter. Without this the
+     * encoders fell back to one-by-one uploads, which took hours for long videos.
+     */
+    private function s3Client($disk)
+    {
+        if (method_exists($disk, 'getClient')) {
+            return $disk->getClient();
+        }
+
+        try {
+            $adapter = $disk->getDriver()->getAdapter();
+        } catch (\Throwable $e) {
+            return null;
+        }
+
+        return method_exists($adapter, 'getClient') ? $adapter->getClient() : null;
     }
 
     /**
