@@ -10,6 +10,8 @@ use Illuminate\Queue\SerializesModels;
 use HlsVideos\Services\Qualities\V2\FfmpegLocalStepsEncoderService;
 use HlsVideos\Models\HlsVideo;
 use HlsVideos\Services\VideoService;
+use HlsVideos\Services\EncodeProgress;
+use Illuminate\Queue\MaxAttemptsExceededException;
 use Illuminate\Support\Facades\Log;
 
 use Illuminate\Support\Facades\Event;
@@ -51,6 +53,7 @@ class ConvertQualityJob implements ShouldQueue
         Log::error('ConvertQualityJob permanently failed after retries', [
             'video_id' => $this->video->id,
             'message' => $e->getMessage(),
+            'progress' => EncodeProgress::describe($this->video->id),
         ]);
         $this->tenant->makeCurrent();
 
@@ -61,6 +64,19 @@ class ConvertQualityJob implements ShouldQueue
             Log::warning('ConvertQualityJob cleanup failed', ['video_id' => $this->video->id, 'message' => $cleanupError->getMessage()]);
         }
 
-        Event::dispatch(new VideoConvertedErrorEvent($this->video, app('currentTenant'), $e->getMessage()));
+        // The node is destroyed after a failure, so this message (failed_reason on
+        // the master) is all that is left: it says which step the encode stopped at.
+        $progress = EncodeProgress::describe($this->video->id);
+        EncodeProgress::forget($this->video->id);
+
+        $message = $e instanceof MaxAttemptsExceededException
+            ? 'Worker timeout: the job ran longer than the worker allows. '.$e->getMessage()
+            : get_class($e).': '.$e->getMessage();
+
+        if ($progress) {
+            $message = "[{$progress}] {$message}";
+        }
+
+        Event::dispatch(new VideoConvertedErrorEvent($this->video, app('currentTenant'), $message));
     }
 }

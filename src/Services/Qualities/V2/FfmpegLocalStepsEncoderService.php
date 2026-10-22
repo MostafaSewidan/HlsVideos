@@ -3,6 +3,7 @@
 namespace HlsVideos\Services\Qualities\V2;
 
 use HlsVideos\Services\CompressService;
+use HlsVideos\Services\EncodeProgress;
 
 use HlsVideos\DTOS\VideoConverted;
 use HlsVideos\Models\HlsVideoQuality;
@@ -24,9 +25,14 @@ class FfmpegLocalStepsEncoderService
     protected ?array $sourceDimensions = null;
     protected array $qualityTargets = [];
     protected ?array $sourceFps = null;
+    /** false = not probed yet, null = unknown. */
+    protected int|null|false $sourceVideoKbps = false;
 
     /** Frame rate every normalized video is encoded at. */
     protected const NORMALIZED_FPS = 30;
+
+    /** Floor for the source-bitrate cap, so a badly reported source can't starve the encode. */
+    protected const MIN_VIDEO_KBPS = 300;
 
 
     public function convertVideo($videoFile, HlsVideo $video)
@@ -36,7 +42,13 @@ class FfmpegLocalStepsEncoderService
         AppHlsVideoQuality::where('hls_video_id', $this->video->id)->delete();
 
         // The source is needed before the quality rows: their labels depend on its size.
+        EncodeProgress::start($this->video->id, 'download');
         $this->downloadVideoFromUploadedVideosDisk();
+
+        EncodeProgress::step($this->video->id, 'probe');
+
+        // Probed before a separate-pass normalization re-encodes (and inflates) the file.
+        $this->getSourceVideoKbps();
 
         // Normalizing used to be a full separate encode before the HLS encode.
         // With inline normalization on, the HLS encode itself outputs constant
@@ -52,6 +64,7 @@ class FfmpegLocalStepsEncoderService
             ]);
 
             if (! $inlineFpsNormalization) {
+                EncodeProgress::step($this->video->id, 'normalize');
                 $this->normalizeVideoFps();
             }
         }
@@ -71,6 +84,7 @@ class FfmpegLocalStepsEncoderService
 
 
 
+        EncodeProgress::step($this->video->id, 'thumbnail');
         $videoSerivce->createThumb($this->video);
         $videoSerivce->getVideoDuration($this->video);
         $this->video->refresh();
@@ -128,6 +142,7 @@ class FfmpegLocalStepsEncoderService
             $playlist(VideoService::getMediaPath()."{$videoId}/{$label}-vd.m3u8");
         });
 
+        EncodeProgress::step($videoId, 'encode');
         $encodeStartedAt = microtime(true);
         $transcode
             ->toDisk(config('hls-videos.temp_disk'))
@@ -141,6 +156,7 @@ class FfmpegLocalStepsEncoderService
             'source_fps' => $this->sourceFps,
         ]);
 
+        EncodeProgress::step($videoId, 'playlists');
         $this->handlePlaylists();
 
         $this->qualities->map(function (AppHlsVideoQuality $quality) {
@@ -154,7 +170,10 @@ class FfmpegLocalStepsEncoderService
             $quality->refresh();
         });
 
+        EncodeProgress::step($videoId, 'upload');
         $this->uploadVideoToStorage();
+
+        EncodeProgress::step($videoId, 'finish');
 
         if (CompressService::shouldCompress(app('currentTenant'))) {
             UploadCompressedVideo::dispatch($this->video, app('currentTenant'))->onQueue('compress');
@@ -164,6 +183,8 @@ class FfmpegLocalStepsEncoderService
         }
 
         $this->uploadFinished();
+        EncodeProgress::forget($videoId);
+
         return true;
     }
 
@@ -222,10 +243,46 @@ class FfmpegLocalStepsEncoderService
         return match ((string) $quality) {
             '1080' => [1080, 3000],
             '720' => [720, 1500],
-            '480' => [480, 500],
-            '360' => [360, 400],
+            '480' => [480, 800],
+            '360' => [360, 500],
             default => [720, 1000],
         };
+    }
+
+    /**
+     * Video bitrate of the source in kbps, or null when it can't be trusted as a
+     * cap: unknown, or a codec more efficient than H.264 (HEVC/VP9/AV1 need more
+     * bits as H.264 for the same picture).
+     */
+    protected function getSourceVideoKbps(): ?int
+    {
+        if ($this->sourceVideoKbps !== false) {
+            return $this->sourceVideoKbps;
+        }
+
+        $sourcePath = VideoService::getMediaPath()."{$this->video->id}/{$this->video->file_name}";
+        $fullSource = \Storage::disk(config('hls-videos.temp_disk'))->path($sourcePath);
+
+        $cmd = '/usr/bin/ffprobe -v error -select_streams v:0 -show_entries stream=codec_name,bit_rate:format=bit_rate -of json '.escapeshellarg($fullSource);
+        exec($cmd, $output, $returnCode);
+
+        $kbps = null;
+        if ($returnCode === 0) {
+            $data = json_decode(implode('', $output), true);
+            $stream = $data['streams'][0] ?? [];
+            $codec = $stream['codec_name'] ?? null;
+
+            if (! in_array($codec, ['hevc', 'vp9', 'av1'], true)) {
+                if (is_numeric($stream['bit_rate'] ?? null)) {
+                    $kbps = (int) ($stream['bit_rate'] / 1000);
+                } elseif (is_numeric($data['format']['bit_rate'] ?? null)) {
+                    // Containers like mkv/webm don't report a per-stream rate; drop the audio share.
+                    $kbps = (int) ($data['format']['bit_rate'] / 1000) - 128;
+                }
+            }
+        }
+
+        return $this->sourceVideoKbps = ($kbps !== null && $kbps > 0) ? $kbps : null;
     }
 
     /**
@@ -266,6 +323,28 @@ class FfmpegLocalStepsEncoderService
         }
 
         krsort($targets, SORT_NUMERIC);
+
+        // Never encode above the source's bitrate: it only grows the files, the
+        // detail isn't there. Each kbps must also stay unique, as the segment
+        // filename generator maps kbps back to its quality.
+        $sourceKbps = $this->getSourceVideoKbps();
+        $previousKbps = PHP_INT_MAX;
+        foreach ($targets as $label => $target) {
+            $kbps = $target['kbps'];
+
+            if ($sourceKbps !== null) {
+                $kbps = min($kbps, max($sourceKbps, self::MIN_VIDEO_KBPS));
+            }
+
+            $kbps = min($kbps, $previousKbps - 1);
+            $targets[$label]['kbps'] = $previousKbps = $kbps;
+        }
+
+        \Log::info('HLS quality ladder', [
+            'video' => $this->video->id,
+            'source_kbps' => $sourceKbps,
+            'ladder' => array_map(fn ($t) => $t['kbps'], $targets),
+        ]);
 
         return $this->qualityTargets = $targets;
     }
