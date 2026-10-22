@@ -432,11 +432,16 @@ class VideoService
                 }
             }
 
+            // ?cdn=backup comes from the player after Cloudflare failed for this viewer.
+            $useBackupCdn = self::wantsBackupCdn();
+
             if ($file == 'vd.m3u8') {
 
                 $oldTsFilesUrl = "https://$subdomain.stepsio.com/api/vd/{$videoId}/stream/{$quality}/";
                 $content = str_replace($oldTsFilesUrl, '', $content);
-                $storageStreamDomain = config('hls-videos.storage_stream_domain');
+                $storageStreamDomain = $useBackupCdn
+                    ? config('hls-videos.cdn_fallback.backup_domain')
+                    : config('hls-videos.storage_stream_domain');
                 $newTsFilesUrl = "https://{$storageStreamDomain}/$replacePath/{$quality}";
                 $content = str_replace('index-', "$newTsFilesUrl/index-", $content);
                 $content = preg_replace('/URI="[^"]*secret\.key"/', 'URI="secret.key"', $content);
@@ -445,6 +450,15 @@ class VideoService
 
             if (! $file) {
                 $content = str_replace('cdn.', "$subdomain.", $content);
+
+                // Carry the choice to the quality playlists, so a native (iOS) player
+                // that only knows the master URL also gets backup segment links.
+                if ($useBackupCdn) {
+                    $content = preg_replace_callback('/^(?!#)(\S*vd\.m3u8)(\?\S*)?(?=\r?$)/m', function ($m) {
+                        $query = isset($m[2]) && $m[2] !== '' ? $m[2].'&' : '?';
+                        return $m[1].$query.'cdn=backup';
+                    }, $content);
+                }
             }
 
             return response($content, 200, [
@@ -459,6 +473,16 @@ class VideoService
             \Log::error("Error getting stream file content: ".$e->getMessage()." - ".$e->getTraceAsString());
             abort(404);
         }
+    }
+
+    /**
+     * True when the request asks for the backup CDN (Bunny) and one is configured.
+     */
+    static function wantsBackupCdn(): bool
+    {
+        return request()->query('cdn') === 'backup'
+            && config('hls-videos.cdn_fallback.enabled', true)
+            && filled(config('hls-videos.cdn_fallback.backup_domain'));
     }
 
     static function getStreamTemporaryLink($videoId, $quality = null, $file = null)

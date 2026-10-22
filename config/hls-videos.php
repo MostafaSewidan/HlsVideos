@@ -148,6 +148,45 @@ return [
         'middleware' => ['web'],
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | CDN fallback (Cloudflare -> Bunny)
+    |--------------------------------------------------------------------------
+    | Some networks in Egypt can't reach the Cloudflare stream domain
+    | (storage_stream_domain). When segments fail to load there, the player
+    | switches to backup_domain (a Bunny pull zone with the same paths) and
+    | keeps playing from the same second.
+    |
+    | backup_domain                   empty = no fallback at all.
+    | remember_hours                  after a switch, this device starts on the
+    |                                 backup CDN for this long. 0 = never remember.
+    | fragment_first_byte_timeout_ms  how long hls.js waits for a segment's first
+    |                                 byte before treating the CDN as failing.
+    | native_stall_seconds            iOS/Safari: how long playback may hang
+    |                                 before switching.
+    |
+    | report: every switch is POSTed by the player to /hls/videos/cdn-switch,
+    | then sent from the queue as a signed webhook to steps_monitoring.
+    |   middleware   route middleware. Must NOT include CSRF/session (no web).
+    |   user_guards  guards tried, in order, to find who was watching.
+    */
+    'cdn_fallback' => [
+        'enabled' => (bool) env('HLS_VIDEO_CDN_FALLBACK', true),
+        'backup_domain' => env('HLS_VIDEO_STREAM_BACKUP_URL', 'stream.stepsio.com'),
+        'remember_hours' => (int) env('HLS_VIDEO_CDN_REMEMBER_HOURS', 24),
+        'fragment_first_byte_timeout_ms' => (int) env('HLS_VIDEO_CDN_TTFB_MS', 8000),
+        'native_stall_seconds' => (int) env('HLS_VIDEO_CDN_NATIVE_STALL_SECONDS', 12),
+
+        'report' => [
+            'enabled' => (bool) env('HLS_VIDEO_CDN_REPORT', true),
+            'middleware' => ['throttle:30,1'],
+            'user_guards' => [],
+            'webhook_url' => env('HLS_VIDEO_CDN_SWITCH_WEBHOOK_URL'),
+            'webhook_secret' => env('HLS_VIDEO_CDN_SWITCH_WEBHOOK_SECRET'),
+            'queue' => env('HLS_VIDEO_CDN_SWITCH_QUEUE', 'default'),
+        ],
+    ],
+
     'storages' => [
         'r2' => [
             'disk_name' => 'r2',

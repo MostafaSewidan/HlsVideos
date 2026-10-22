@@ -5,6 +5,7 @@ use HlsVideos\Http\Controllers\HlsVideoController;
 use HlsVideos\Http\Controllers\HlsFolderController;
 use HlsVideos\Http\Controllers\HlsFolderVideoController;
 use HlsVideos\Http\Controllers\VideoExportController;
+use HlsVideos\Http\Controllers\CdnSwitchController;
 
 $middleware = config('hls-videos.uploader_access_middleware') ? explode(',', config('hls-videos.uploader_access_middleware')) : [];
 
@@ -39,6 +40,14 @@ Route::middleware(config('hls-videos.exports.middleware', ['web']))
             ->whereNumber('exportId')
             ->name('download');
     });
+
+/*
+| Called by the player each time it switches CDN (Cloudflare <-> Bunny).
+| No `web` group: the page in the app's WebView has no session or CSRF token.
+*/
+Route::post('hls/videos/cdn-switch', [CdnSwitchController::class, 'store'])
+    ->middleware(config('hls-videos.cdn_fallback.report.middleware', ['throttle:30,1']))
+    ->name('hls.videos.cdn-switch');
 
 Route::get('/hls-videos/{video}/{quality}/download.zip', function ($video, $quality) {
     return HlsVideos\Services\VideoService::StreamVideoZip($video, $quality);
