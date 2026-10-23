@@ -28,6 +28,23 @@ class EncodeProgress
         self::save($videoId, $steps);
     }
 
+    /**
+     * Percentage of the current step (ffmpeg's progress during encode), and
+     * when it last moved, so a failure can tell a frozen encode from a slow one.
+     */
+    public static function progress($videoId, int $percent): void
+    {
+        $steps = self::load($videoId);
+        if (empty($steps)) {
+            return;
+        }
+
+        $last = count($steps) - 1;
+        $steps[$last][2] = $percent;
+        $steps[$last][3] = time();
+        self::save($videoId, $steps);
+    }
+
     public static function forget($videoId): void
     {
         try {
@@ -39,6 +56,7 @@ class EncodeProgress
 
     /**
      * e.g. "stopped at upload after 1h 52m (download 40s, probe 2s, thumbnail 3s, encode 1h 10m, playlists 1s, upload 42m+)"
+     * or, for an encode that froze: "... encode 2h 9m+ at 34%, no progress for 1h 50m)"
      */
     public static function describe($videoId): ?string
     {
@@ -49,9 +67,19 @@ class EncodeProgress
 
         $now = time();
         $parts = [];
-        foreach ($steps as $i => [$name, $startedAt]) {
+        foreach ($steps as $i => $step) {
+            [$name, $startedAt] = $step;
             $endedAt = $steps[$i + 1][1] ?? null;
-            $parts[] = $name.' '.self::duration(($endedAt ?? $now) - $startedAt).($endedAt === null ? '+' : '');
+            $part = $name.' '.self::duration(($endedAt ?? $now) - $startedAt).($endedAt === null ? '+' : '');
+
+            // Progress only matters for the step that was still running.
+            if ($endedAt === null && isset($step[2])) {
+                $part .= " at {$step[2]}%, no progress for ".self::duration($now - $step[3]);
+            } elseif ($endedAt === null && $name === 'encode') {
+                $part .= ' at 0%, no progress reported';
+            }
+
+            $parts[] = $part;
         }
 
         [$current] = end($steps);

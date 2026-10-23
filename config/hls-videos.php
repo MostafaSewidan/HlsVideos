@@ -46,6 +46,11 @@ return [
     // How many files are uploaded to R2 at the same time after a video is converted.
     'upload_concurrency' => (int) env("HLS_VIDEO_UPLOAD_CONCURRENCY", 20),
 
+    // An encode that writes no new segment for this many minutes is taken as
+    // frozen: ffmpeg is killed and the video fails right away instead of at the
+    // 2-hour worker timeout. 0 turns the watchdog off.
+    'encode_stall_minutes' => (int) env("HLS_ENCODE_STALL_MINUTES", 10),
+
     // Normalize variable/too-high frame rates inside the HLS encode instead of a
     // separate full re-encode first. Set to false to go back to the separate pass.
     'inline_fps_normalization' => (bool) env("HLS_VIDEO_INLINE_FPS_NORMALIZATION", true),

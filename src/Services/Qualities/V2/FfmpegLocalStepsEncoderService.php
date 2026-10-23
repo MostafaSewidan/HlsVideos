@@ -4,6 +4,7 @@ namespace HlsVideos\Services\Qualities\V2;
 
 use HlsVideos\Services\CompressService;
 use HlsVideos\Services\EncodeProgress;
+use HlsVideos\Services\EncodeWatchdog;
 
 use HlsVideos\DTOS\VideoConverted;
 use HlsVideos\Models\HlsVideoQuality;
@@ -144,9 +145,32 @@ class FfmpegLocalStepsEncoderService
 
         EncodeProgress::step($videoId, 'encode');
         $encodeStartedAt = microtime(true);
-        $transcode
-            ->toDisk(config('hls-videos.temp_disk'))
-            ->save(VideoService::getMediaPath()."{$videoId}/index.m3u8");
+
+        $transcode->onProgress(function ($percentage) use ($videoId) {
+            EncodeProgress::progress($videoId, (int) $percentage);
+        });
+
+        // Kills ffmpeg if it stops writing segments, instead of waiting for the
+        // 2-hour worker timeout. The segments are written straight into this folder.
+        $watchdog = EncodeWatchdog::forDir(
+            \Storage::disk(config('hls-videos.temp_disk'))->path(VideoService::getMediaPath().$videoId)
+        );
+        $watchdog->start();
+
+        try {
+            $transcode
+                ->toDisk(config('hls-videos.temp_disk'))
+                ->save(VideoService::getMediaPath()."{$videoId}/index.m3u8");
+        } catch (\Throwable $e) {
+            if ($reason = $watchdog->stallReason()) {
+                throw new \RuntimeException("ffmpeg stalled and was killed by the watchdog: {$reason}", 0, $e);
+            }
+
+            throw $e;
+        } finally {
+            $watchdog->stop();
+            $watchdog->clearMarker();
+        }
 
         \Log::info('HLS encode finished', [
             'video' => $videoId,
