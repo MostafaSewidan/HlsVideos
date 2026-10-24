@@ -44,7 +44,7 @@ return [
     'convert_quality_queue_name' => env("HLS_VIDEO_CONVERT_QUEUE", 'default'),
 
     // How many files are uploaded to R2 at the same time after a video is converted.
-    'upload_concurrency' => (int) env("HLS_VIDEO_UPLOAD_CONCURRENCY", 20),
+    'upload_concurrency' => (int) 5,
 
     // An encode that writes no new segment for this many minutes is taken as
     // frozen: ffmpeg is killed and the video fails right away instead of at the

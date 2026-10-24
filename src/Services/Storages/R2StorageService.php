@@ -141,6 +141,9 @@ class R2StorageService implements VideoStorageInterface
         $failed = [];
         $pool = new CommandPool($client, $commands, [
             'concurrency' => max(1, $concurrency),
+            // Without this the callbacks get the position (0, 1, 2...) instead of
+            // the relative path, and the retry pass tries to open "temp-videos/228".
+            'preserve_iterator_keys' => true,
             'rejected' => function ($reason, $relativePath) use (&$failed) {
                 $failed[$relativePath] = $reason instanceof AwsException
                     ? ($reason->getAwsErrorMessage() ?: $reason->getMessage())
