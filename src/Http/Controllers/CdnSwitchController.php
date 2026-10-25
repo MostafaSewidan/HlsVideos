@@ -22,7 +22,7 @@ class CdnSwitchController extends Controller
         }
 
         $data = $request->validate([
-            'video_id' => ['required', 'integer', 'min:1'],
+            'video_id' => ['required'],
             'from_cdn' => ['required', 'in:primary,backup'],
             'to_cdn' => ['required', 'in:primary,backup', 'different:from_cdn'],
             'reason' => ['required', 'string', 'max:64', 'regex:/^[A-Za-z0-9_.:-]+$/'],
@@ -41,7 +41,7 @@ class CdnSwitchController extends Controller
         $event = [
             'tenant_id' => $tenant?->id,
             'tenant' => $tenant?->subdomain,
-            'video_id' => (int) $data['video_id'],
+            'video_id' => $data['video_id'],
             'user_id' => $this->userId(),
             'from_cdn' => $data['from_cdn'],
             'to_cdn' => $data['to_cdn'],
