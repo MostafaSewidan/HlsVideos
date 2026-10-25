@@ -341,11 +341,16 @@
         // Try HLS.js first (works in most WebViews)
         if (Hls.isSupported()) {
 
+            // hls.js keeps the playlist url (primary host) on each segment, so the
+            // error alone can't tell which CDN was really hit. Remember it here.
+            const cdnUsedFor = new Map();
+
             const hlsConfig = {
                 xhrSetup: function(xhr, url) {
                     // Segments on a CDN: send them to the CDN in use, with no custom
                     // headers (they would force a CORS preflight the CDN may refuse).
                     if (CdnFallback.isCdnUrl(url)) {
+                        cdnUsedFor.set(url, CdnFallback.current());
                         xhr.open('GET', CdnFallback.rewrite(url), true);
                         return;
                     }
@@ -406,6 +411,15 @@
                 const isCdnFailure = data.type === Hls.ErrorTypes.NETWORK_ERROR &&
                     failedUrl && CdnFallback.isCdnUrl(failedUrl);
 
+                // A request sent to the old CDN before the switch (e.g. one that hung
+                // until its timeout) failing now says nothing about the CDN in use.
+                // Without this check it would switch us back to the blocked CDN.
+                const usedCdn = failedUrl ? cdnUsedFor.get(failedUrl) : undefined;
+                if (isCdnFailure && usedCdn && usedCdn !== CdnFallback.current()) {
+                    if (data.fatal) hls.startLoad(video.currentTime || -1);
+                    return;
+                }
+
                 // First segment failure on a CDN: move to the other one. hls.js'
                 // own retry then goes through xhrSetup and lands on the new host.
                 if (isCdnFailure && CdnFallback.switchCdn({
@@ -421,6 +435,9 @@
 
                 if (data.fatal) {
                     console.error('Fatal HLS error, falling back to native:', data);
+                    // Stop hls.js first, otherwise it keeps loading segments next to
+                    // the native player.
+                    hls.destroy();
                     fallbackToNative(videoSource);
                 }
             });
@@ -462,6 +479,11 @@
                 initPlyr(qualityHeights, null, qualities);
             }, {
                 once: true
+            });
+
+            watchNativeCdn(video, 'native', function() {
+                const quality = qualities.find(q => q.height === video.dataset.quality * 1);
+                return CdnFallback.withCdnParam(quality && quality.url ? quality.url : videoSource);
             });
         }
     }
