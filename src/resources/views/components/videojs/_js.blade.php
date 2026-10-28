@@ -8,7 +8,7 @@
 @if (app()->getLocale() === 'ar')
     <script type="module" src="{{ $vjs }}/locales/ar.js"></script>
 @endif
-<script type="module" src="{{ $vjs }}/video.js"></script>
+<script type="module" src="{{ $vjs }}/{{ $videojsSkin['bundle'] }}"></script>
 @if ($videoType === 'hls')
     <script type="module" src="{{ $vjs }}/media/hlsjs-video.js"></script>
 @endif
@@ -195,11 +195,21 @@
         /* ------------------------------------------------------------------ */
 
         function startPlayerBridge() {
-            customElements.whenDefined('video-player').then(function() {
+            const skin = playerEl.querySelector('.hls-vjs-skin');
+
+            Promise.all([
+                customElements.whenDefined('video-player'),
+                customElements.whenDefined(skin.tagName.toLowerCase())
+            ]).then(function() {
                 applyPosterFallback(playerEl);
 
                 const store = playerEl.store;
-                if (!store || fullScreenAllowed) return;
+                if (!store) return;
+
+                trimSkin(skin);
+                blockPipAndCasting(store);
+
+                if (fullScreenAllowed) return;
 
                 // Same messages the Plyr player sends to the app (only when the app
                 // keeps the player inline, full_screen = off).
@@ -226,6 +236,50 @@
                         post('Controls', store.controlsVisible ? 'controlsshown' : 'controlshidden');
                     }
                 });
+            });
+        }
+
+        // The skin renders its controls inside its own shadow root, out of reach of
+        // page CSS. Add our rules there: no PiP / cast / AirPlay buttons, and no
+        // fullscreen button when the app keeps the player inline. Also drop the
+        // "i" (PiP) keyboard shortcut.
+        function trimSkin(skin) {
+            const root = skin.shadowRoot;
+            if (!root) return;
+
+            const hidden = ['media-pip-button', 'media-cast-button', 'media-airplay-button'];
+            if (!fullScreenAllowed) hidden.push('media-fullscreen-button');
+
+            try {
+                const sheet = new CSSStyleSheet();
+                sheet.replaceSync(hidden.join(',') + '{display:none!important}');
+                root.adoptedStyleSheets = root.adoptedStyleSheets.concat([sheet]);
+            } catch (e) {
+                const style = document.createElement('style');
+                style.textContent = hidden.join(',') + '{display:none!important}';
+                root.appendChild(style);
+            }
+
+            function dropPipHotkeys() {
+                root.querySelectorAll('media-hotkey[action="togglePictureInPicture"]').forEach(function(el) {
+                    el.remove();
+                });
+            }
+            dropPipHotkeys();
+            new MutationObserver(dropPipHotkeys).observe(root, {
+                childList: true,
+                subtree: true
+            });
+        }
+
+        // Picture-in-picture and casting are also off on the media element itself.
+        // If either still starts somehow, leave PiP / pause the cast right away.
+        function blockPipAndCasting(store) {
+            store.subscribe(function() {
+                if (store.isPictureInPicture) store.exitPictureInPicture().catch(function() {});
+                if (store.remotePlaybackState && store.remotePlaybackState !== 'disconnected' && !store.paused) {
+                    store.pause();
+                }
             });
         }
     })();

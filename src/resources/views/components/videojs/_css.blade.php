@@ -41,9 +41,6 @@
         --media-object-fit: contain;
     }
 
-    /* App screens that keep the player inline: no fullscreen button.
-       (The script also leaves fullscreen if a gesture enters it.) */
-    .hls-vjs-container[data-fullscreen="off"] media-fullscreen-button {
-        display: none !important;
-    }
+    /* The skin's controls live in its shadow root, so hiding buttons (PiP, cast,
+       fullscreen when off) is done by the script in videojs/_js. */
 </style>

@@ -44,10 +44,14 @@ return [
     |                            111+ or Safari 16.4+; older tablets need plyr.
     | videojs.version  the Video.js CDN version. Every Video.js file is loaded
     |                  with this same version.
+    | videojs.skin     default = modern, frosted look
+    |                  neutral = lighter, closer to a classic control bar
+    |                  compat  = plain, built for older browsers
     */
     'player' => env('HLS_VIDEO_PLAYER', 'plyr'),
     'videojs' => [
         'version' => env('HLS_VIDEO_VIDEOJS_VERSION', '10.2.0'),
+        'skin' => env('HLS_VIDEO_PLAYER_SKIN', 'neutral'),
         'accent_color' => env('HLS_VIDEO_PLAYER_ACCENT_COLOR', '#ffc629'),
     ],
     'repositories' => [
