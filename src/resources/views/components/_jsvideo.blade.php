@@ -10,7 +10,6 @@
             'primary' => config('hls-videos.storage_stream_domain'),
             'backup' => $cdnFallback['backup_domain'] ?? null,
         ],
-        'rememberHours' => (int) ($cdnFallback['remember_hours'] ?? 24),
         'fragTtfbMs' => (int) ($cdnFallback['fragment_first_byte_timeout_ms'] ?? 8000),
         'nativeStallSeconds' => (int) ($cdnFallback['native_stall_seconds'] ?? 12),
         'reportUrl' => ($cdnFallback['report']['enabled'] ?? true) && \Illuminate\Support\Facades\Route::has('hls.videos.cdn-switch')
@@ -26,35 +25,17 @@
     /*
      * CDN fallback: Cloudflare (primary) -> Bunny (backup).
      * Both CDNs serve the same paths, so switching is just swapping the host.
-     * The switch happens at most once per direction per page, so it can't loop.
+     * Every video page starts on Cloudflare. On the first failure it moves to
+     * Bunny for the rest of this page and never goes back. Opening the video
+     * again (or another video) starts on Cloudflare again.
      */
     const CdnFallback = (function(cfg) {
-        const STORAGE_KEY = 'hls_cdn_preference';
-        const switched = {};
         let current = 'primary';
 
-        function readPreference() {
-            try {
-                const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || 'null');
-                if (saved && saved.cdn === 'backup' && saved.until > Date.now()) return 'backup';
-            } catch (e) {}
-            return 'primary';
-        }
-
-        function savePreference(cdn) {
-            try {
-                if (cdn === 'backup' && cfg.rememberHours > 0) {
-                    localStorage.setItem(STORAGE_KEY, JSON.stringify({
-                        cdn: 'backup',
-                        until: Date.now() + cfg.rememberHours * 3600 * 1000
-                    }));
-                } else {
-                    localStorage.removeItem(STORAGE_KEY);
-                }
-            } catch (e) {}
-        }
-
-        if (cfg.enabled) current = readPreference();
+        // Older versions remembered Bunny on the device. Drop that.
+        try {
+            localStorage.removeItem('hls_cdn_preference');
+        } catch (e) {}
 
         function hostOf(url) {
             try {
@@ -62,10 +43,6 @@
             } catch (e) {
                 return null;
             }
-        }
-
-        function other(cdn) {
-            return cdn === 'primary' ? 'backup' : 'primary';
         }
 
         function isCdnUrl(url) {
@@ -98,22 +75,17 @@
             }
         }
 
-        // Moves to the other CDN. Returns false when that already happened once.
+        // Moves to Bunny, once. Returns false when already on Bunny.
         function switchCdn(details) {
-            if (!cfg.enabled) return false;
-            const from = current;
-            const to = other(from);
-            if (switched[from + '>' + to]) return false;
-            switched[from + '>' + to] = true;
-            current = to;
-            savePreference(to);
-            console.warn('[CDN] switching ' + from + ' -> ' + to, details);
-            report(from, to, details || {});
+            if (!canSwitch()) return false;
+            current = 'backup';
+            console.warn('[CDN] switching primary -> backup', details);
+            report('primary', 'backup', details || {});
             return true;
         }
 
         function canSwitch() {
-            return cfg.enabled && !switched[current + '>' + other(current)];
+            return cfg.enabled && current === 'primary';
         }
 
         function report(from, to, details) {
@@ -392,6 +364,22 @@
                 };
             }
 
+            // Switch CDN only when a segment request got no answer: it timed out,
+            // or the connection failed (status 0 = blocked / reset). Not for:
+            // - requests hls.js cancels itself (every seek cancels the loading segment),
+            // - real answers like 404 / 403 (the other CDN has the same files),
+            // - the viewer being offline (the other CDN won't help either).
+            function segmentNeverArrived(data) {
+                if (data.details !== Hls.ErrorDetails.FRAG_LOAD_ERROR &&
+                    data.details !== Hls.ErrorDetails.FRAG_LOAD_TIMEOUT) return false;
+                if (data.stats && data.stats.aborted) return false;
+                if (navigator.onLine === false) return false;
+                if (data.details === Hls.ErrorDetails.FRAG_LOAD_TIMEOUT) return true;
+
+                const status = data.response ? data.response.code : 0;
+                return !status || status >= 500;
+            }
+
             const hls = new Hls(hlsConfig);
 
             hls.loadSource(videoSource);
@@ -409,7 +397,8 @@
             hls.on(Hls.Events.ERROR, function(event, data) {
                 const failedUrl = (data.frag && data.frag.url) || (data.context && data.context.url) || null;
                 const isCdnFailure = data.type === Hls.ErrorTypes.NETWORK_ERROR &&
-                    failedUrl && CdnFallback.isCdnUrl(failedUrl);
+                    failedUrl && CdnFallback.isCdnUrl(failedUrl) &&
+                    segmentNeverArrived(data);
 
                 // A request sent to the old CDN before the switch (e.g. one that hung
                 // until its timeout) failing now says nothing about the CDN in use.
@@ -618,15 +607,10 @@
             if (videoType === 'hls') {
                 videoPlayerIoRun();
             } else {
-                // Direct mp4 from the CDN: start on the remembered CDN, switch on failure.
+                // Direct mp4 from the CDN: starts on Cloudflare, moves to Bunny on failure.
                 const mp4Source = video.querySelector('source');
                 if (mp4Source && CdnFallback.isCdnUrl(mp4Source.src)) {
                     const originalSrc = mp4Source.src;
-                    const preferred = CdnFallback.rewrite(originalSrc);
-                    if (preferred !== originalSrc) {
-                        mp4Source.src = preferred;
-                        video.load();
-                    }
                     const trySwitch = watchNativeCdn(video, 'mp4', function() {
                         return CdnFallback.rewrite(originalSrc);
                     });

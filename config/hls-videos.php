@@ -160,11 +160,10 @@ return [
     | Some networks in Egypt can't reach the Cloudflare stream domain
     | (storage_stream_domain). When segments fail to load there, the player
     | switches to backup_domain (a Bunny pull zone with the same paths) and
-    | keeps playing from the same second.
+    | keeps playing from the same second. It stays on backup_domain until the
+    | page is closed; every new video page starts on the primary CDN again.
     |
     | backup_domain                   empty = no fallback at all.
-    | remember_hours                  after a switch, this device starts on the
-    |                                 backup CDN for this long. 0 = never remember.
     | fragment_first_byte_timeout_ms  how long hls.js waits for a segment's first
     |                                 byte before treating the CDN as failing.
     | native_stall_seconds            iOS/Safari: how long playback may hang
@@ -178,7 +177,6 @@ return [
     'cdn_fallback' => [
         'enabled' => (bool) env('HLS_VIDEO_CDN_FALLBACK', true),
         'backup_domain' => env('HLS_VIDEO_STREAM_BACKUP_URL', 'stream.stepsio.com'),
-        'remember_hours' => (int) env('HLS_VIDEO_CDN_REMEMBER_HOURS', 24),
         'fragment_first_byte_timeout_ms' => (int) env('HLS_VIDEO_CDN_TTFB_MS', 8000),
         'native_stall_seconds' => (int) env('HLS_VIDEO_CDN_NATIVE_STALL_SECONDS', 12),
 

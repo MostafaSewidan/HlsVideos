@@ -779,8 +779,8 @@
             partSize: @json((int) config('hls-videos.direct_upload.part_size', 32 * 1024 * 1024)),
             maxFileSize: @json(
                 config('hls-videos.upload_driver') === 'direct'
-                    ? (int) config('hls-videos.direct_upload.max_file_size', 1400 * 1024 * 1024)
-                    : 1500 * 1024 * 1024
+                    ? (int) config('hls-videos.direct_upload.max_file_size', 2048 * 1024 * 1024)
+                    : 2048 * 1024 * 1024
             ),
             headers: {
                 'Accept': 'application/json',

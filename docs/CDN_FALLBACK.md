@@ -13,15 +13,19 @@ fallback only swaps the CDN host in those URLs.
 
 | Player | Switches when | How |
 |---|---|---|
-| hls.js (Android / WebView / desktop) | first network error or timeout on a segment from a CDN host (`fragLoadPolicy.maxTimeToFirstByteMs` = `fragment_first_byte_timeout_ms`) | `xhrSetup` rewrites the host of every CDN request. hls.js' own retry then goes to the new host. |
+| hls.js (Android / WebView / desktop) | first segment from a CDN host that times out or gets no answer (`fragLoadPolicy.maxTimeToFirstByteMs` = `fragment_first_byte_timeout_ms`) | `xhrSetup` rewrites the host of every CDN request. hls.js' own retry then goes to the new host. |
 | Native HLS (iOS / Safari) | `<video>` network error, or no progress for `native_stall_seconds` while playing | reloads with `?cdn=backup`. The server then writes backup segment links into `vd.m3u8`, and the master carries the param to every quality. |
 | mp4 (`videoType` ≠ hls) | same as native | swaps the host of the mp4 URL |
 | Poster | image fails to load | swaps the poster host only (a missing thumbnail looks the same as a blocked one, so it doesn't move the video) |
 
-- It switches at most once per direction per page (Cloudflare → Bunny, and Bunny →
-  Cloudflare if Bunny then fails), so it can't loop.
-- After a switch to Bunny, the device starts on Bunny for `remember_hours`
-  (localStorage `hls_cdn_preference`). Switching back to Cloudflare clears it.
+- Every video page starts on Cloudflare. The switch happens once, Cloudflare →
+  Bunny, and the rest of the video plays from Bunny. It never goes back to
+  Cloudflare on the same page. Closing the video and opening it again (or opening
+  another video) starts on Cloudflare again. Nothing is remembered on the device.
+- hls.js switches only when a segment got no answer: a timeout, status 0 (blocked /
+  reset) or 5xx. Requests hls.js cancels itself (every seek does this), 4xx answers,
+  and an offline device don't count. A late failure from a request sent to
+  Cloudflare before the switch is ignored.
 - Custom headers (`Authorization`, `Password`, `Version`) are now sent only to our
   API, not to CDN hosts. They aren't needed there, and they would force a CORS
   preflight.
@@ -40,7 +44,6 @@ If the webhook isn't configured, the event is written to the log instead.
 |---|---|---|
 | `enabled` | `HLS_VIDEO_CDN_FALLBACK` | `true` |
 | `backup_domain` | `HLS_VIDEO_STREAM_BACKUP_URL` | `stream.stepsio.com` (empty = off) |
-| `remember_hours` | `HLS_VIDEO_CDN_REMEMBER_HOURS` | `24` |
 | `fragment_first_byte_timeout_ms` | `HLS_VIDEO_CDN_TTFB_MS` | `8000` |
 | `native_stall_seconds` | `HLS_VIDEO_CDN_NATIVE_STALL_SECONDS` | `12` |
 | `report.enabled` | `HLS_VIDEO_CDN_REPORT` | `true` |
