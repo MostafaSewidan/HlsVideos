@@ -14,6 +14,9 @@ class Video extends Component
 
     public function render()
     {
-        return view('hls-videos::components.video');
+        // hls-videos.player: 'plyr' (current) or 'videojs' (new player).
+        return config('hls-videos.player') === 'videojs'
+            ? view('hls-videos::components.videojs.video')
+            : view('hls-videos::components.video');
     }
 }

@@ -34,6 +34,22 @@ return [
     'temp_videos_prefix' => env("HLS_VIDEO_TEMP_PREFIX", 'temp-videos'),
 
     'video_player_optionstatus' => true,
+
+    /*
+    |--------------------------------------------------------------------------
+    | Student video player (<x-hls-video>)
+    |--------------------------------------------------------------------------
+    | player           plyr    = the current player (Plyr 3).
+    |                  videojs = the new player (Video.js 10). Needs Chrome/WebView
+    |                            111+ or Safari 16.4+; older tablets need plyr.
+    | videojs.version  the Video.js CDN version. Every Video.js file is loaded
+    |                  with this same version.
+    */
+    'player' => env('HLS_VIDEO_PLAYER', 'plyr'),
+    'videojs' => [
+        'version' => env('HLS_VIDEO_VIDEOJS_VERSION', '10.2.0'),
+        'accent_color' => env('HLS_VIDEO_PLAYER_ACCENT_COLOR', '#ffc629'),
+    ],
     'repositories' => [
         'hls_folder' => HlsFolderRepository::class
     ],

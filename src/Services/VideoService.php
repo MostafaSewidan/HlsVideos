@@ -437,7 +437,8 @@ class VideoService
 
             if ($file == 'vd.m3u8') {
 
-                $oldTsFilesUrl = "https://$subdomain.stepsio.com/api/vd/{$videoId}/stream/{$quality}/";
+                $baseDomain = config('hls-videos.base_domain', 'stepsio.com');
+                $oldTsFilesUrl = "https://$subdomain.$baseDomain/api/vd/{$videoId}/stream/{$quality}/";
                 $content = str_replace($oldTsFilesUrl, '', $content);
                 $storageStreamDomain = $useBackupCdn
                     ? config('hls-videos.cdn_fallback.backup_domain')
