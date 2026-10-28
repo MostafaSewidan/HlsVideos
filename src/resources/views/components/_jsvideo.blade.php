@@ -343,20 +343,21 @@
                 }
             };
 
-            // Give up on a segment sooner than the default, so a CDN that hangs
-            // (the usual failure on the affected networks) is noticed in seconds.
+            // Only the first-byte timeout is changed, so a CDN that hangs is noticed
+            // sooner. Retry counts stay at hls.js' defaults (4 / 6): slow, old tablets
+            // need them, and fewer retries stop playback for good on a bad segment.
             if (CdnFallback.enabled) {
                 hlsConfig.fragLoadPolicy = {
                     default: {
                         maxTimeToFirstByteMs: CdnFallback.config.fragTtfbMs,
                         maxLoadTimeMs: 120000,
                         timeoutRetry: {
-                            maxNumRetry: 2,
+                            maxNumRetry: 4,
                             retryDelayMs: 0,
                             maxRetryDelayMs: 0
                         },
                         errorRetry: {
-                            maxNumRetry: 3,
+                            maxNumRetry: 6,
                             retryDelayMs: 1000,
                             maxRetryDelayMs: 8000
                         }
@@ -423,11 +424,14 @@
                 }
 
                 if (data.fatal) {
-                    console.error('Fatal HLS error, falling back to native:', data);
-                    // Stop hls.js first, otherwise it keeps loading segments next to
-                    // the native player.
-                    hls.destroy();
-                    fallbackToNative(videoSource);
+                    console.error('Fatal HLS error:', data);
+                    // Hand over to the browser's own HLS player only where one exists
+                    // (Safari, new Chrome). Android WebViews / tablets have none, so
+                    // destroying hls.js there would just leave a dead player.
+                    if (video.canPlayType('application/vnd.apple.mpegurl')) {
+                        hls.destroy();
+                        fallbackToNative(videoSource);
+                    }
                 }
             });
         }
