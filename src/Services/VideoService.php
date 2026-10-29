@@ -472,7 +472,7 @@ class VideoService
         } catch (\Exception $e) {
 
             \Log::error("Error getting stream file content: ".$e->getMessage()." - ".$e->getTraceAsString());
-            abort(404);
+            abort(502);
         }
     }
 
