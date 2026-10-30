@@ -94,11 +94,11 @@
 
             // Switch CDN only when a segment got no answer: it timed out, or the
             // connection failed (status 0 = blocked / reset), or a 5xx. Not for
-            // requests hls.js cancels itself (every seek does), 4xx answers, or an
-            // offline device.
+            // requests hls.js cancels itself on a seek (they come as 'aborted', so the
+            // details check skips them), 4xx answers, or an offline device.
+            // Don't check stats.aborted: hls.js sets it on every timeout too.
             function segmentNeverArrived(data) {
                 if (data.details !== 'fragLoadError' && data.details !== 'fragLoadTimeOut') return false;
-                if (data.stats && data.stats.aborted) return false;
                 if (navigator.onLine === false) return false;
                 if (data.details === 'fragLoadTimeOut') return true;
 
