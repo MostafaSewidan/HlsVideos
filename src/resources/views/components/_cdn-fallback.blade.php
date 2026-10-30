@@ -9,6 +9,7 @@
         ],
         'fragTtfbMs' => (int) ($cdnFallback['fragment_first_byte_timeout_ms'] ?? 8000),
         'nativeStallSeconds' => (int) ($cdnFallback['native_stall_seconds'] ?? 12),
+        'probeTimeoutMs' => (int) ($cdnFallback['thumb_probe_timeout_ms'] ?? 4000),
         'reportUrl' => ($cdnFallback['report']['enabled'] ?? true) && \Illuminate\Support\Facades\Route::has('hls.videos.cdn-switch')
             ? route('hls.videos.cdn-switch')
             : null,
@@ -196,22 +197,71 @@
         return trySwitch;
     }
 
-    // Poster: if the image fails on one CDN, try the other one. Doesn't change
-    // the video's CDN (a missing thumbnail looks the same as a blocked one).
-    function applyPosterFallback(video) {
-        if (!CdnFallback.enabled || !video.poster || !CdnFallback.isCdnUrl(video.poster)) return;
-        const preferred = CdnFallback.rewrite(video.poster);
-        const img = new Image();
-        img.onload = function() {
-            video.poster = preferred;
-        };
-        img.onerror = function() {
-            const u = new URL(preferred);
-            u.host = u.host === CdnFallback.config.hosts.primary ?
-                CdnFallback.config.hosts.backup :
-                CdnFallback.config.hosts.primary;
-            video.poster = u.toString();
-        };
-        img.src = preferred;
+    // Picks the CDN to start on from the thumbnail, before the video loads.
+    // The thumb sits on the same CDN, so a network that can't reach Cloudflare
+    // can't load it either. That avoids waiting for a segment timeout:
+    // - thumb loads from Cloudflare                  -> start on Cloudflare,
+    // - it fails or hangs past probeTimeoutMs, but
+    //   loads from Bunny                             -> start on Bunny (this is the one switch),
+    // - fails on both (missing thumb)                -> start on Cloudflare as usual.
+    // Old videos keep their thumb on another disk: no probe, normal behavior.
+    // setPoster(url) gets the url that worked. player = 'hlsjs' | 'native' | 'mp4'.
+    function chooseStartCdn(posterUrl, player, setPoster) {
+        const cfg = CdnFallback.config;
+        if (!CdnFallback.enabled || !cfg.probeTimeoutMs || !posterUrl || !CdnFallback.isCdnUrl(posterUrl)) {
+            return Promise.resolve();
+        }
+
+        function onHost(url, host) {
+            const u = new URL(url, window.location.href);
+            u.host = host;
+            return u.toString();
+        }
+
+        function loadImage(url) {
+            return new Promise(function(resolve) {
+                const img = new Image();
+                let done = false;
+                const timer = setTimeout(function() {
+                    finish(false);
+                }, cfg.probeTimeoutMs);
+
+                function finish(ok) {
+                    if (done) return;
+                    done = true;
+                    clearTimeout(timer);
+                    img.onload = img.onerror = null;
+                    resolve(ok);
+                }
+                img.onload = function() {
+                    finish(true);
+                };
+                img.onerror = function() {
+                    finish(false);
+                };
+                img.src = url;
+            });
+        }
+
+        const primaryUrl = onHost(posterUrl, cfg.hosts.primary);
+        const backupUrl = onHost(posterUrl, cfg.hosts.backup);
+
+        return loadImage(primaryUrl).then(function(ok) {
+            if (ok) {
+                setPoster(primaryUrl);
+                return;
+            }
+            return loadImage(backupUrl).then(function(backupOk) {
+                if (!backupOk) return;
+                setPoster(backupUrl);
+                CdnFallback.switchCdn({
+                    reason: 'thumb_probe',
+                    player: player,
+                    url: primaryUrl,
+                    httpStatus: null,
+                    position: 0
+                });
+            });
+        });
     }
 </script>

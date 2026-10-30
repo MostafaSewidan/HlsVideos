@@ -396,27 +396,44 @@
                 adjustContainerForPortrait(video);
             });
 
-            applyPosterFallback(video);
+            const isHls = videoType === 'hls';
+            const player = isHls ? (Hls.isSupported() ? 'hlsjs' : 'native') : 'mp4';
 
-            if (videoType === 'hls') {
-                videoPlayerIoRun();
-            } else {
-                // Direct mp4 from the CDN: starts on Cloudflare, moves to Bunny on failure.
-                const mp4Source = video.querySelector('source');
-                if (mp4Source && CdnFallback.isCdnUrl(mp4Source.src)) {
-                    const originalSrc = mp4Source.src;
-                    const trySwitch = watchNativeCdn(video, 'mp4', function() {
-                        return CdnFallback.rewrite(originalSrc);
-                    });
-                    // A failing <source> child fires "error" on itself, not on the <video>.
-                    mp4Source.addEventListener('error', function() {
-                        trySwitch('mp4_source_error');
-                    });
+            // Test the thumb first: a student who can't reach Cloudflare starts
+            // on Bunny right away instead of waiting for a segment timeout.
+            chooseStartCdn(video.poster, player, function(url) {
+                video.poster = url;
+            }).then(function() {
+                if (isHls) {
+                    videoPlayerIoRun();
+                } else {
+                    startMp4(video);
                 }
-                initNativePlayer();
-            }
+            });
         }
     });
+
+    // Direct mp4 from the CDN: starts on the CDN picked by the thumb test,
+    // moves to Bunny on failure.
+    function startMp4(video) {
+        const mp4Source = video.querySelector('source');
+        if (mp4Source && CdnFallback.isCdnUrl(mp4Source.src)) {
+            const originalSrc = mp4Source.src;
+            const preferred = CdnFallback.rewrite(originalSrc);
+            if (preferred !== originalSrc) {
+                mp4Source.src = preferred;
+                video.load();
+            }
+            const trySwitch = watchNativeCdn(video, 'mp4', function() {
+                return CdnFallback.rewrite(originalSrc);
+            });
+            // A failing <source> child fires "error" on itself, not on the <video>.
+            mp4Source.addEventListener('error', function() {
+                trySwitch('mp4_source_error');
+            });
+        }
+        initNativePlayer();
+    }
 
     function initPlyr(availableQualities, hls, nativeQualities) {
         const video = document.getElementById("player");

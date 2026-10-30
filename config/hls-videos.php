@@ -199,6 +199,9 @@ return [
         'backup_domain' => env('HLS_VIDEO_STREAM_BACKUP_URL', 'stream.stepsio.com'),
         'fragment_first_byte_timeout_ms' => (int) env('HLS_VIDEO_CDN_TTFB_MS', 8000),
         'native_stall_seconds' => (int) env('HLS_VIDEO_CDN_NATIVE_STALL_SECONDS', 12),
+        // Before playing, load the thumb from Cloudflare; if it fails within this
+        // time but loads from Bunny, the student starts on Bunny. 0 = off.
+        'thumb_probe_timeout_ms' => (int) env('HLS_VIDEO_CDN_PROBE_MS', 4000),
 
         'report' => [
             'enabled' => (bool) env('HLS_VIDEO_CDN_REPORT', true),

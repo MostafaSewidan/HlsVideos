@@ -1,6 +1,6 @@
 @php($vjs = 'https://cdn.jsdelivr.net/npm/@videojs/cdn@' . config('hls-videos.videojs.version'))
 
-{{-- Defines CdnFallback, watchNativeCdn and applyPosterFallback (shared with Plyr). --}}
+{{-- Defines CdnFallback, watchNativeCdn and chooseStartCdn (shared with Plyr). --}}
 @include('hls-videos::components._cdn-fallback')
 
 {{-- Every Video.js file must come from the same version (shared chunks). --}}
@@ -31,11 +31,19 @@
             }
         });
 
-        if (isHls) {
-            startHls();
-        } else {
-            startMp4();
-        }
+        // Test the thumb first: a student who can't reach Cloudflare starts on
+        // Bunny right away instead of waiting for a segment timeout.
+        const hasMse = !!(window.MediaSource || window.ManagedMediaSource);
+        chooseStartCdn(playerEl.getAttribute('poster'), isHls ? (hasMse ? 'hlsjs' : 'native') : 'mp4',
+            function(url) {
+                playerEl.setAttribute('poster', url);
+            }).then(function() {
+            if (isHls) {
+                startHls();
+            } else {
+                startMp4();
+            }
+        });
         startPlayerBridge();
 
         /* ------------------------------------------------------------------ */
@@ -201,8 +209,6 @@
                 customElements.whenDefined('video-player'),
                 customElements.whenDefined(skin.tagName.toLowerCase())
             ]).then(function() {
-                applyPosterFallback(playerEl);
-
                 const store = playerEl.store;
                 if (!store) return;
 
