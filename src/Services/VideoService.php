@@ -450,6 +450,9 @@ class VideoService
             }
 
             if (! $file) {
+                if (! $quality) {
+                    self::touchLastPlayed($videoId);
+                }
                 $content = str_replace('cdn.', "$subdomain.", $content);
 
                 // Carry the choice to the quality playlists, so a native (iOS) player
@@ -473,6 +476,22 @@ class VideoService
 
             \Log::error("Error getting stream file content: ".$e->getMessage()." - ".$e->getTraceAsString());
             abort(502);
+        }
+    }
+
+    /**
+     * Records that a player loaded the video, at most once an hour per video, so the
+     * archive knows which videos are watched. Never gets in the way of playback.
+     */
+    static function touchLastPlayed($videoId): void
+    {
+        try {
+            if (\Cache::add('hls-videos:played:'.self::getMediaPath().$videoId, 1, 3600)) {
+                // toBase(): no updated_at bump, a play is not an edit.
+                HlsVideo::whereKey($videoId)->toBase()->update(['last_played_at' => now()]);
+            }
+        } catch (\Throwable $e) {
+            \Log::warning("Could not record last_played_at for {$videoId}: ".$e->getMessage());
         }
     }
 

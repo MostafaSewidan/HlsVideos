@@ -4,6 +4,7 @@ namespace HlsVideos\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Storage;
+use HlsVideos\Services\VideoArchiveService;
 use HlsVideos\Services\VideoService;
 use HlsVideos\Jobs\DeleteHlsVideoFiles;
 
@@ -17,10 +18,29 @@ class HlsVideo extends Model
     const READY = 'ready';
     const ORIENTATION_PORTRAIT = 'P';
     const ORIENTATION_LANDSCAPE = 'L';
+
+    // storage_bucket: the bucket the video plays from.
+    const STORAGE_LEGACY = 'legacy';
+    const STORAGE_TENANT = 'tenant';
+
+    // storage_state: where the segments are. `status` stays READY in every one.
+    const STORAGE_HOT = 'hot';
+    const STORAGE_MIGRATING = 'migrating';
+    const STORAGE_ARCHIVING = 'archiving';
+    const STORAGE_ARCHIVED = 'archived';
+    const STORAGE_RESTORING = 'restoring';
+    const STORAGE_FAILED = 'failed';
+
     protected $guarded = [];
     public $casts = [
         'stream_data' => 'array',
         'upload_started_at' => 'datetime',
+        'archive_manifest' => 'array',
+        'hot_size_bytes' => 'integer',
+        'archived_at' => 'datetime',
+        'restored_at' => 'datetime',
+        'last_active_at' => 'datetime',
+        'last_played_at' => 'datetime',
     ];
     public $incrementing = false;
     protected $keyType = 'string';
@@ -48,6 +68,29 @@ class HlsVideo extends Model
             $videoService->protectVideo($video);
             $videoService->handleVideoQualities($video);
         });
+    }
+
+    /**
+     * Archives the video's files to the Storage Box (see VideoArchiveService).
+     * Not called automatically anywhere yet.
+     */
+    public function archive(?callable $stillArchivable = null): self
+    {
+        return app(VideoArchiveService::class)->archive($this, $stillArchivable);
+    }
+
+    /**
+     * Brings the archived files back. $testTarget restores a copy to that rclone
+     * path instead, without touching the video.
+     */
+    public function unArchive(?string $testTarget = null): self
+    {
+        return app(VideoArchiveService::class)->unArchive($this, $testTarget);
+    }
+
+    public function getIsArchivedAttribute(): bool
+    {
+        return $this->storage_state === self::STORAGE_ARCHIVED;
     }
 
     public function scopePendingUpload($query)

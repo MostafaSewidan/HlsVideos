@@ -213,6 +213,46 @@ return [
         ],
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Video archive (R2 -> Hetzner Storage Box)
+    |--------------------------------------------------------------------------
+    | Runs where rclone is installed and configured (the archive worker), never on
+    | a web server. Plan: base_backend docs/video-archive-plan.md.
+    |
+    | sources          rclone path of each bucket a video can play from, by
+    |                  hls_videos.storage_bucket, e.g. "r2:steps".
+    | test_target      rclone path that `hls-videos:unarchive --test` restores to.
+    |                  Must be a separate bucket: R2 tokens can't be scoped to a prefix.
+    | box.remote       rclone path of the archive root on the Storage Box.
+    | box.ssh_*        used to run sha256sum on the box. Without ssh_host, every tar
+    |                  is read back to verify it (slower).
+    | delete_enabled   off = archive() keeps the segments on R2. Stays off until the
+    |                  migration phase.
+    */
+    'archive' => [
+        'rclone_binary' => env('HLS_ARCHIVE_RCLONE', 'rclone'),
+        'rclone_config' => env('HLS_ARCHIVE_RCLONE_CONFIG'),
+        'sources' => [
+            'legacy' => env('HLS_ARCHIVE_SOURCE_LEGACY'),
+        ],
+        'test_target' => env('HLS_ARCHIVE_TEST_TARGET'),
+        'box' => [
+            'name' => env('HLS_ARCHIVE_BOX_NAME', 'default'),
+            'remote' => env('HLS_ARCHIVE_BOX_REMOTE'),
+            'ssh_host' => env('HLS_ARCHIVE_BOX_SSH_HOST'),
+            'ssh_port' => (int) env('HLS_ARCHIVE_BOX_SSH_PORT', 23),
+            'ssh_key' => env('HLS_ARCHIVE_BOX_SSH_KEY'),
+            'ssh_base' => env('HLS_ARCHIVE_BOX_SSH_BASE'),
+            'verify' => env('HLS_ARCHIVE_VERIFY', 'auto'),
+        ],
+        'work_dir' => env('HLS_ARCHIVE_WORK_DIR', storage_path('app/video-archive')),
+        'r2_transfers' => (int) env('HLS_ARCHIVE_R2_TRANSFERS', 16),
+        'process_timeout' => 7200,
+        'keep_work' => false,
+        'delete_enabled' => (bool) env('HLS_ARCHIVE_DELETE_ENABLED', false),
+    ],
+
     'storages' => [
         'r2' => [
             'disk_name' => 'r2',

@@ -2,7 +2,9 @@
 namespace HlsVideos\Providers;
 
 use HlsVideos\Components\{VideoManeger, Video};
+use HlsVideos\Console\ArchiveVideo;
 use HlsVideos\Console\PruneVideoExports;
+use HlsVideos\Console\UnArchiveVideo;
 use Illuminate\Support\Facades\Blade;
 use Illuminate\Support\ServiceProvider;
 
@@ -28,7 +30,7 @@ class HlsVideoServiceProvider extends ServiceProvider
         Blade::component('hls-video', Video::class);
 
         if ($this->app->runningInConsole()) {
-            $this->commands([PruneVideoExports::class]);
+            $this->commands([PruneVideoExports::class, ArchiveVideo::class, UnArchiveVideo::class]);
         }
     }
 
