@@ -8,6 +8,8 @@ use HlsVideos\Models\HlsFolder;
 use HlsVideos\Models\HlsFolderVideo;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Http\Request;
+use HlsVideos\Exceptions\LinkedVideosException;
+use HlsVideos\Services\VideoCleanup;
 
 class HlsFolderVideoController extends ApiController
 {
@@ -25,9 +27,13 @@ class HlsFolderVideoController extends ApiController
 
     public function delete(Request $request)
     {
-        $this->hls_video_folder->whereIn('id', (array)$request->ids)->delete();
+        try {
+            $deleted = app(VideoCleanup::class)->deleteFolderEntries((array) $request->ids);
+        } catch (LinkedVideosException $e) {
+            return $this->linkedVideosError($e);
+        }
 
-        return $this->response();
+        return $this->response(['deleted_videos' => $deleted]);
     }
 
     public function move(CopyMoveVideoRequest $request)

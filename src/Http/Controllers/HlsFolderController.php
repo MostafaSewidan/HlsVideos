@@ -6,6 +6,8 @@ use HlsVideos\Http\Requests\HlsFolderRequest;
 use HlsVideos\Http\Requests\MoveFolderRequest;
 use HlsVideos\Http\Requests\RenameHlsFolderRequest;
 use Illuminate\Http\Request;
+use HlsVideos\Exceptions\LinkedVideosException;
+use HlsVideos\Services\VideoCleanup;
 use HlsVideos\Models\HlsFolder;
 use HlsVideos\Models\HlsFolderVideo;
 use HlsVideos\Transformers\FolderBreadcrumbResource;
@@ -60,9 +62,13 @@ class HlsFolderController extends ApiController
 
     public function delete(Request $request)
     {
-        $this->hls_folder->whereIn('id', (array)$request->ids)->delete();
+        try {
+            $deleted = app(VideoCleanup::class)->deleteFolders((array) $request->ids);
+        } catch (LinkedVideosException $e) {
+            return $this->linkedVideosError($e);
+        }
 
-        return $this->response();
+        return $this->response(['deleted_videos' => $deleted]);
     }
 
     public function move(MoveFolderRequest $request)

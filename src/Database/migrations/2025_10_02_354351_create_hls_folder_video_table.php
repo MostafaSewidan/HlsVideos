@@ -4,7 +4,6 @@ use Illuminate\Support\Facades\Schema;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Database\Migrations\Migration;
 use HlsVideos\Models\HlsFolder;
-use HlsVideos\Models\HlsVideo;
 
 return new class extends Migration
 {
@@ -41,8 +40,9 @@ return new class extends Migration
             ]
         );
         
-        foreach (HlsVideo::all() as $video) {
-            $masterFolder->videos()->syncWithoutDetaching([$video->id]);
+        // Not the HlsVideo model: it soft deletes, and deleted_at comes in a later migration.
+        foreach (\Illuminate\Support\Facades\DB::table('hls_videos')->pluck('id') as $videoId) {
+            $masterFolder->videos()->syncWithoutDetaching([$videoId]);
         }
     }
 

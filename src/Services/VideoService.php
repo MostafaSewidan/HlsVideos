@@ -187,10 +187,9 @@ class VideoService
             $model->hlsVideos()->detach($id);
         }
 
-        if (! $video->HlsVideoables()->count() && ! $video->parentFolders()->count()) {
-
-            return HlsVideo::find($id)->delete();
-        }
+        // Still in the library: it stays there (archived later). Otherwise it is
+        // trashed and purged after a few days (hls-videos:purge-trashed).
+        return $video ? app(VideoCleanup::class)->afterRemovedFromLesson($video) : false;
     }
 
     public function receiveVideo($request, $model = null, $folderId = null)

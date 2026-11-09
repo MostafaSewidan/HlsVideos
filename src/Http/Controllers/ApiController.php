@@ -33,6 +33,16 @@ class ApiController extends Controller
         return response()->json($response, $code);
     }
 
+    /** A library delete refused because lessons use some of its videos (422). */
+    public function linkedVideosError(\HlsVideos\Exceptions\LinkedVideosException $e)
+    {
+        return $this->error(
+            __('These videos are used in lessons, so they cannot be deleted from the library. Remove them from the lessons first.'),
+            ['linked_videos' => $e->videos],
+            422
+        );
+    }
+
     public function invalidData($error, $errorMessages = [], $code = 422)
     {
         $response = [

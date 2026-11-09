@@ -57,12 +57,8 @@ class HlsFolderVideo extends Pivot
             }
         });
 
-        static::deleting(function ($model) {
-            // We should not use global scope here because we need to count all parent folders not just in shared folders because we will delete the real video if it's not used anywhere
-            if ($model->video->parentFolders()->withoutGlobalScope('checkSharedFolders')->count() === 1) {
-                $model->video->delete();
-            }
-        });
+        // Deleting a video with its last entry is VideoCleanup's job: it checks the
+        // video isn't used in a lesson first.
     }
 
     protected static function booted()

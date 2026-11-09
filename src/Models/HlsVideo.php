@@ -3,13 +3,17 @@
 namespace HlsVideos\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Support\Facades\Storage;
 use HlsVideos\Services\VideoArchiveService;
 use HlsVideos\Services\VideoService;
-use HlsVideos\Jobs\DeleteHlsVideoFiles;
+use HlsVideos\Services\VideoUsage;
 
 class HlsVideo extends Model
 {
+    // A soft deleted video lost its last lesson. hls-videos:purge-trashed removes
+    // its files and row after a few days, and restore() brings it back before that.
+    use SoftDeletes;
 
     const PENDING_UPLOAD = 'pending_upload';
     const UPLOAD_FAILED = 'upload_failed';
@@ -144,6 +148,18 @@ class HlsVideo extends Model
             'hls_video_id',
             'videoable_id'
         );
+    }
+
+    /** Linked to a lesson (or any videoable) that still exists, trashed included. */
+    public function isLinked(): bool
+    {
+        return VideoUsage::isLinked($this->id);
+    }
+
+    /** In at least one library folder, whoever is looking. */
+    public function isInLibrary(): bool
+    {
+        return $this->parentFolders()->withoutGlobalScope('checkSharedFolders')->exists();
     }
 
     public function HlsVideoables()

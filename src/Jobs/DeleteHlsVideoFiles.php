@@ -1,15 +1,12 @@
 <?php
 namespace HlsVideos\Jobs;
 
-use HlsVideos\DTOS\VideoConverted;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
-use HlsVideos\Factories\VideoQualityProcessorFactory;
 use HlsVideos\Models\HlsVideo;
-use HlsVideos\Models\HlsVideoQuality;
 use HlsVideos\Services\VideoService;
 use Illuminate\Support\Facades\Storage;
 
@@ -25,8 +22,14 @@ class DeleteHlsVideoFiles implements ShouldQueue
     public function handle(): void
     {
         $this->tenant->makeCurrent();
-        $video = HlsVideo::findOrFail($this->videoId);
-        if ($this->videoId && $video) {
+        // Trashed videos are what this job is mostly for. A row already gone means
+        // an earlier run finished.
+        $video = $this->videoId ? HlsVideo::withTrashed()->find($this->videoId) : null;
+        if ($video) {
+            if ($video->archive_path) {
+                // Deleting the copy on the Storage Box comes with automatic archiving (phase 5).
+                \Log::warning("Deleting video {$video->id}: its archive on the box is left at {$video->archive_path}");
+            }
 
             $path = VideoService::getMediaPath().$video->id;
 
@@ -49,7 +52,7 @@ class DeleteHlsVideoFiles implements ShouldQueue
             $prefix = trim(config('hls-videos.temp_videos_prefix', 'temp-videos'), '/');
             Storage::disk(config('hls-videos.uploaded_videos_disk'))
                 ->deleteDirectory("{$prefix}/{$path}");
-            $video->delete();
+            $video->forceDelete();
         }
     }
 }
