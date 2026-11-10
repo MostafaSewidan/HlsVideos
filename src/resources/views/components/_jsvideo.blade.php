@@ -1,3 +1,5 @@
+{{-- First, so a player script that fails to load is logged too. --}}
+@include('hls-videos::components._player-debug')
 <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
 <script src="https://cdn.plyr.io/3.7.8/plyr.polyfilled.js"></script>
 
@@ -172,6 +174,7 @@
             }
 
             const hls = new Hls(hlsConfig);
+            PlayerLog.attachHls(hls, 'plyr');
 
             hls.loadSource(videoSource);
             hls.attachMedia(video);
@@ -227,6 +230,7 @@
         }
         // Native HLS with manual quality parsing
         else if (video.canPlayType("application/vnd.apple.mpegurl")) {
+            PlayerLog.add('player.native', { reason: 'no_hlsjs_support' });
 
             // Parse manifest to get quality levels
             const qualities = await parseM3U8Manifest(CdnFallback.withCdnParam(videoSource));
@@ -250,6 +254,7 @@
 
     async function fallbackToNative(videoSource) {
         const video = document.getElementById("player");
+        PlayerLog.add('player.native', { reason: 'hlsjs_fatal_error' });
 
         if (video.canPlayType("application/vnd.apple.mpegurl")) {
 
@@ -394,6 +399,17 @@
 
             video.addEventListener('loadedmetadata', function() {
                 adjustContainerForPortrait(video);
+            });
+
+            PlayerLog.attachMedia(video, 'plyr');
+            PlayerLog.add('player.start', {
+                player: 'plyr',
+                videoType: videoType,
+                hlsLoaded: typeof Hls !== 'undefined',
+                hlsVersion: typeof Hls !== 'undefined' ? Hls.version : null,
+                hlsSupported: typeof Hls !== 'undefined' ? Hls.isSupported() : null,
+                plyrLoaded: typeof Plyr !== 'undefined',
+                poster: video.poster || null
             });
 
             const isHls = videoType === 'hls';

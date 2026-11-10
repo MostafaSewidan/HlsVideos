@@ -215,6 +215,23 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Player debug logging (one student at a time)
+    |--------------------------------------------------------------------------
+    | `hls-videos:debug-player {student id} --hours=48` turns it on for one
+    | viewer. Their player pages then post every event (player, network, CDN
+    | switches, JS errors) to /hls/videos/player-log, written to the log channel
+    | below (storage/logs/player-debug-YYYY-MM-DD.log by default).
+    |   middleware  route middleware. No `web`: the WebView page has no session.
+    */
+    'player_debug' => [
+        'enabled' => (bool) env('HLS_VIDEO_PLAYER_DEBUG', true),
+        'log_channel' => 'hls-player-debug',
+        'max_events' => 4000,
+        'middleware' => ['throttle:120,1'],
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Video archive (R2 -> Hetzner Storage Box)
     |--------------------------------------------------------------------------
     | Runs where rclone is installed and configured (the archive worker), never on

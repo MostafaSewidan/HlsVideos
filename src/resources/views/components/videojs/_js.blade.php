@@ -1,5 +1,8 @@
 @php($vjs = 'https://cdn.jsdelivr.net/npm/@videojs/cdn@' . config('hls-videos.videojs.version'))
 
+{{-- First, so a player script that fails to load is logged too. --}}
+@include('hls-videos::components._player-debug')
+
 {{-- Defines CdnFallback, watchNativeCdn and chooseStartCdn (shared with Plyr). --}}
 @include('hls-videos::components._cdn-fallback')
 
@@ -21,6 +24,17 @@
 
         const isHls = media.tagName.toLowerCase() === 'hlsjs-video';
         const sourceUrl = media.dataset.src;
+
+        PlayerLog.attachMedia(media, 'videojs');
+        PlayerLog.add('player.start', {
+            player: 'videojs',
+            tag: media.tagName.toLowerCase(),
+            mse: !!(window.MediaSource || window.ManagedMediaSource),
+            poster: playerEl.getAttribute('poster')
+        });
+        customElements.whenDefined('hlsjs-video').then(function() {
+            PlayerLog.add('player.hlsjs_video_defined', null);
+        });
         const fullScreenAllowed = @json($fullScreenStatus !== 'off');
 
         // Portrait videos: let the container follow the video's shape.
@@ -120,6 +134,7 @@
                 const hls = media.engine;
                 if (!hls || hooked.has(hls)) return;
                 hooked.add(hls);
+                PlayerLog.attachHls(hls, 'videojs');
 
                 hls.on('hlsError', function(event, data) {
                     const failedUrl = (data.frag && data.frag.url) || (data.context && data.context.url) || null;

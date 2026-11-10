@@ -1,6 +1,7 @@
 <?php
 namespace HlsVideos\Components;
 
+use HlsVideos\Services\PlayerDebug;
 use Illuminate\View\Component;
 
 class Video extends Component
@@ -17,8 +18,16 @@ class Video extends Component
     /** @var array{bundle: string, tag: string} */
     public array $videojsSkin;
 
-    public function __construct(public $video, public $fullScreenStatus = 'on', public $password = null, public $authToken = null, public $version = null)
+    /** Debug logging for this viewer (PlayerDebug::clientConfig), null when off. */
+    public ?array $playerDebug = null;
+
+    /**
+     * $debugViewer: who is watching (the student id), so hls-videos:debug-player
+     * can log this viewer's player.
+     */
+    public function __construct(public $video, public $fullScreenStatus = 'on', public $password = null, public $authToken = null, public $version = null, public $debugViewer = null)
     {
+        $this->playerDebug = PlayerDebug::clientConfig($debugViewer, $video);
         $this->videoType = $video->is_support_original ? 'direct' : 'hls';
         $this->videojsSkin = self::VIDEOJS_SKINS[config('hls-videos.videojs.skin')] ?? self::VIDEOJS_SKINS['default'];
     }
