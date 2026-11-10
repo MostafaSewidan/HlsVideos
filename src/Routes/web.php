@@ -49,6 +49,14 @@ Route::post('hls/videos/cdn-switch', [CdnSwitchController::class, 'store'])
     ->middleware(config('hls-videos.cdn_fallback.report.middleware', ['throttle:30,1']))
     ->name('hls.videos.cdn-switch');
 
+/*
+| Player debug logging (hls-videos:debug-player). Signed token in the body, no
+| session: the page in the app's WebView has none.
+*/
+Route::post('hls/videos/player-log', [\HlsVideos\Http\Controllers\PlayerLogController::class, 'store'])
+    ->middleware(config('hls-videos.player_debug.middleware', ['throttle:120,1']))
+    ->name('hls.videos.player-log');
+
 Route::get('/hls-videos/{video}/{quality}/download.zip', function ($video, $quality) {
     return HlsVideos\Services\VideoService::StreamVideoZip($video, $quality);
 })->name('hls-videos.download-zip')->middleware('signed');

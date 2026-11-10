@@ -73,6 +73,7 @@
 
         // Moves to Bunny, once. Returns false when already on Bunny.
         function switchCdn(details) {
+            if (window.PlayerLog) PlayerLog.add(canSwitch() ? 'cdn.switch' : 'cdn.switch_refused', details || null);
             if (!canSwitch()) return false;
             current = 'backup';
             console.warn('[CDN] switching primary -> backup', details);
@@ -108,6 +109,17 @@
                     })
                 }).catch(function() {});
             } catch (e) {}
+        }
+
+        if (window.PlayerLog) {
+            PlayerLog.add('cdn.config', {
+                enabled: cfg.enabled,
+                primary: cfg.hosts.primary,
+                backup: cfg.hosts.backup,
+                fragTtfbMs: cfg.fragTtfbMs,
+                probeTimeoutMs: cfg.probeTimeoutMs,
+                reports: !!cfg.reportUrl
+            });
         }
 
         return {
@@ -209,6 +221,7 @@
     function chooseStartCdn(posterUrl, player, setPoster) {
         const cfg = CdnFallback.config;
         if (!CdnFallback.enabled || !cfg.probeTimeoutMs || !posterUrl || !CdnFallback.isCdnUrl(posterUrl)) {
+            if (window.PlayerLog) PlayerLog.add('cdn.probe_skipped', { poster: posterUrl || null, isCdn: posterUrl ? CdnFallback.isCdnUrl(posterUrl) : false });
             return Promise.resolve();
         }
 
@@ -219,6 +232,7 @@
         }
 
         function loadImage(url) {
+            const started = Date.now();
             return new Promise(function(resolve) {
                 const img = new Image();
                 let done = false;
@@ -229,6 +243,7 @@
                 function finish(ok) {
                     if (done) return;
                     done = true;
+                    if (window.PlayerLog) PlayerLog.add('cdn.probe', { url: url, ok: ok, ms: Date.now() - started, timedOut: !ok && Date.now() - started >= cfg.probeTimeoutMs });
                     clearTimeout(timer);
                     img.onload = img.onerror = null;
                     resolve(ok);
