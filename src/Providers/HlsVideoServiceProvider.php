@@ -4,6 +4,7 @@ namespace HlsVideos\Providers;
 use HlsVideos\Components\{VideoManeger, Video};
 use HlsVideos\Console\ArchiveVideo;
 use HlsVideos\Console\DebugPlayer;
+use HlsVideos\Console\PlayerLog;
 use HlsVideos\Console\PruneVideoExports;
 use HlsVideos\Console\PurgeDeadVideos;
 use HlsVideos\Console\PurgeTrashedVideos;
@@ -44,7 +45,7 @@ class HlsVideoServiceProvider extends ServiceProvider
         Blade::component('hls-video', Video::class);
 
         if ($this->app->runningInConsole()) {
-            $this->commands([PruneVideoExports::class, PurgeTrashedVideos::class, PurgeDeadVideos::class, DebugPlayer::class, ArchiveVideo::class, UnArchiveVideo::class]);
+            $this->commands([PruneVideoExports::class, PurgeTrashedVideos::class, PurgeDeadVideos::class, DebugPlayer::class, PlayerLog::class, ArchiveVideo::class, UnArchiveVideo::class]);
         }
     }
 

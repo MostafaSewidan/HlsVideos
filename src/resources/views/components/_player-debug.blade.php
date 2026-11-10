@@ -8,7 +8,7 @@
     window.PlayerLog = (function(cfg) {
         const noop = function() {};
         if (!cfg) {
-            return { enabled: false, add: noop, attachHls: noop, attachMedia: noop };
+            return { enabled: false, add: noop, attachHls: noop, attachMedia: noop, attachPlyr: noop };
         }
 
         const startedAt = Date.now();
@@ -70,6 +70,23 @@
             return c ? { type: c.type, effectiveType: c.effectiveType, downlink: c.downlink, rtt: c.rtt, saveData: c.saveData } : null;
         }
 
+        // CdnFallback is a top-level const of another script: in scope, not on window.
+        function currentCdn() {
+            try {
+                return typeof CdnFallback !== 'undefined' ? CdnFallback.current() : null;
+            } catch (e) {
+                return null;
+            }
+        }
+
+        function stack() {
+            try {
+                return clip((new Error().stack || '').split('\n').slice(2).join('\n'), 1500);
+            } catch (e) {
+                return null;
+            }
+        }
+
         function bufferedAhead(media) {
             try {
                 const t = media.currentTime;
@@ -87,7 +104,7 @@
                 readyState: media ? media.readyState : null,
                 networkState: media ? media.networkState : null,
                 ahead: media ? bufferedAhead(media) : null,
-                cdn: window.CdnFallback ? CdnFallback.current() : null,
+                cdn: currentCdn(),
                 online: navigator.onLine,
                 visible: document.visibilityState
             };
@@ -99,6 +116,7 @@
         function attachMedia(media, label) {
             if (!media || attachedMedia.has(media)) return;
             attachedMedia.add(media);
+            traceResets(media, label);
             ['loadstart', 'loadedmetadata', 'loadeddata', 'canplay', 'playing', 'play', 'pause', 'waiting', 'stalled',
                 'suspend', 'seeking', 'seeked', 'ended', 'emptied', 'abort', 'ratechange'
             ].forEach(function(evt) {
@@ -119,6 +137,67 @@
                 if (document.visibilityState === 'visible') add('heartbeat', Object.assign({ player: label }, mediaState(media)));
             }, 10000);
         }
+
+        // Who reloads the element or changes its source (hls.js, Plyr, our code,
+        // the browser): logged with the caller's stack.
+        function traceResets(media, label) {
+            if (!(media instanceof HTMLMediaElement)) return;
+            try {
+                const load = media.load;
+                media.load = function() {
+                    add('media.load_called', { player: label, src: clip(media.currentSrc || '', 300), stack: stack() });
+                    return load.apply(this, arguments);
+                };
+                const removeAttribute = media.removeAttribute;
+                media.removeAttribute = function(name) {
+                    if (String(name).toLowerCase() === 'src') add('media.src_removed', { player: label, src: clip(media.currentSrc || '', 300), stack: stack() });
+                    return removeAttribute.apply(this, arguments);
+                };
+                const setAttribute = media.setAttribute;
+                media.setAttribute = function(name, value) {
+                    if (String(name).toLowerCase() === 'src') add('media.src_set', { player: label, to: clip(String(value), 300), via: 'setAttribute', stack: stack() });
+                    return setAttribute.apply(this, arguments);
+                };
+                const src = Object.getOwnPropertyDescriptor(HTMLMediaElement.prototype, 'src');
+                if (src && src.set) {
+                    Object.defineProperty(media, 'src', {
+                        configurable: true,
+                        get: function() { return src.get.call(this); },
+                        set: function(value) {
+                            add('media.src_set', { player: label, to: clip(String(value), 300), stack: stack() });
+                            src.set.call(this, value);
+                        }
+                    });
+                }
+            } catch (e) {
+                add('debug.trace_failed', { message: clip(e, 300) });
+            }
+        }
+
+        // Plyr: its own events and every tap on a control.
+        function attachPlyr(player) {
+            if (!player || !player.on) return;
+            ['ready', 'play', 'pause', 'playing', 'waiting', 'ended', 'qualitychange', 'ratechange', 'enterfullscreen', 'exitfullscreen', 'controlsshown', 'controlshidden', 'error'
+            ].forEach(function(evt) {
+                try {
+                    player.on(evt, function(e) {
+                        add('plyr.' + evt, evt === 'qualitychange' ? { quality: e && e.detail && e.detail.quality } : null);
+                    });
+                } catch (err) {}
+            });
+        }
+
+        // Taps on the player's buttons (Plyr and Video.js), to tell "pressed play
+        // and nothing happened" from "never pressed play".
+        document.addEventListener('click', function(e) {
+            const el = e.target && e.target.closest ? e.target.closest('button, [role="button"], [data-plyr], media-play-button, media-seek-button') : null;
+            if (!el) return;
+            add('ui.click', {
+                tag: el.tagName.toLowerCase(),
+                plyr: el.getAttribute('data-plyr'),
+                label: clip(el.getAttribute('aria-label') || el.textContent || '', 60)
+            });
+        }, true);
 
         // hls.js: playlists, every segment (host, time to first byte, size), every
         // error. Event names as strings: Video.js has no global Hls.
@@ -178,7 +257,7 @@
                     level: frag.level,
                     reason: data.reason || (data.error ? clip(data.error, 300) : null),
                     timing: timing(frag.stats || data.stats),
-                    cdn: window.CdnFallback ? CdnFallback.current() : null,
+                    cdn: currentCdn(),
                     online: navigator.onLine
                 });
             });
@@ -250,6 +329,6 @@
 
         setInterval(flush, 5000);
 
-        return { enabled: true, add: add, attachHls: attachHls, attachMedia: attachMedia, flush: flush, state: mediaState };
+        return { enabled: true, add: add, attachHls: attachHls, attachMedia: attachMedia, attachPlyr: attachPlyr, flush: flush, state: mediaState };
     })(@json($playerDebug ?? null));
 </script>

@@ -7,6 +7,7 @@ use HlsVideos\Providers\HlsVideoServiceProvider;
 use HlsVideos\Services\PlayerDebug;
 use Illuminate\Support\Facades\Blade;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Redis;
 use Illuminate\Support\Facades\Route;
 use Orchestra\Testbench\TestCase;
 
@@ -26,6 +27,7 @@ class PlayerDebugTest extends TestCase
         $app['config']->set('app.key', 'base64:'.base64_encode(str_repeat('k', 32)));
         $app['config']->set('cache.default', 'array');
         $app['config']->set('hls-videos.storage_stream_domain', 'cdn.example.test');
+        $app['config']->set('hls-videos.player_debug.redis', null);
         // The Plyr view asks the app's admin guard whether to send the student's headers.
         $app['config']->set('auth.guards.admin', ['driver' => 'session', 'provider' => 'users']);
     }
@@ -86,6 +88,33 @@ class PlayerDebugTest extends TestCase
         $this->assertStringContainsString('fragLoadTimeOut', $this->logged[1][1]['data']);
     }
 
+    public function test_events_from_every_node_are_kept_together_and_shown_in_order(): void
+    {
+        $redis = new FakeRedis;
+        Redis::shouldReceive('connection')->with('default')->andReturn($redis);
+        config(['hls-videos.player_debug.redis' => 'default']);
+        $token = PlayerDebug::token('3', '1234', self::VIDEO, time() + 60);
+        $post = fn (array $events) => $this->call('POST', route('hls.videos.player-log'), [], [], [], ['CONTENT_TYPE' => 'text/plain'],
+            json_encode(['token' => $token, 'session' => 'page1', 'events' => $events]));
+
+        // Two batches of one page, landing on different nodes, the later one first.
+        $post([['seq' => 3, 'ms' => 3574, 'at' => '2026-11-10T20:32:48.831Z', 'type' => 'media.abort', 'data' => ['t' => 0]]]);
+        $post([
+            ['seq' => 1, 'ms' => 3, 'at' => '2026-11-10T20:32:45.260Z', 'type' => 'session', 'data' => ['ua' => 'wv']],
+            ['seq' => 2, 'ms' => 52, 'at' => '2026-11-10T20:32:45.309Z', 'type' => 'hls.manifest_loading', 'data' => null],
+        ]);
+
+        $this->assertCount(3, PlayerDebug::stored('1234'));
+        $this->artisan('hls-videos:player-log', ['viewer' => '1234'])
+            ->expectsOutput('     1      0.0s  session                {"ua":"wv"}')
+            ->expectsOutput('     2      0.1s  hls.manifest_loading   null')
+            ->expectsOutput('     3      3.6s  media.abort            {"t":0}')
+            ->assertExitCode(0);
+
+        $this->artisan('hls-videos:player-log', ['viewer' => '1234', '--clear' => true])->assertExitCode(0);
+        $this->assertSame([], PlayerDebug::stored('1234'));
+    }
+
     public function test_the_endpoint_refuses_a_bad_token(): void
     {
         $this->call('POST', route('hls.videos.player-log'), [], [], [], ['CONTENT_TYPE' => 'text/plain'],
@@ -131,5 +160,43 @@ class PlayerDebugTest extends TestCase
         $video->forceFill(['id' => self::VIDEO, 'status' => HlsVideo::READY, 'stream_data' => ['thumb_disk' => 'r2']]);
 
         return $video;
+    }
+}
+
+class FakeRedis
+{
+    public array $lists = [];
+
+    public function rpush($key, ...$values)
+    {
+        foreach ($values as $v) {
+            $this->lists[$key][] = $v;
+        }
+
+        return count($this->lists[$key]);
+    }
+
+    public function ltrim($key, $start, $stop)
+    {
+        $this->lists[$key] = array_slice($this->lists[$key] ?? [], $start);
+
+        return true;
+    }
+
+    public function expire($key, $seconds)
+    {
+        return true;
+    }
+
+    public function lrange($key, $start, $stop)
+    {
+        return $this->lists[$key] ?? [];
+    }
+
+    public function del($key)
+    {
+        unset($this->lists[$key]);
+
+        return 1;
     }
 }

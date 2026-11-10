@@ -222,12 +222,19 @@ return [
     | switches, JS errors) to /hls/videos/player-log, written to the log channel
     | below (storage/logs/player-debug-YYYY-MM-DD.log by default).
     |   middleware  route middleware. No `web`: the WebView page has no session.
+    |   redis       Redis connection that also keeps the events, shared by every
+    |               web node behind the load balancer, so
+    |               `hls-videos:player-log {student id}` shows them all from any
+    |               node. null = log file only.
     */
     'player_debug' => [
         'enabled' => (bool) env('HLS_VIDEO_PLAYER_DEBUG', true),
         'log_channel' => 'hls-player-debug',
         'max_events' => 4000,
         'middleware' => ['throttle:120,1'],
+        'redis' => env('HLS_VIDEO_PLAYER_DEBUG_REDIS', 'default'),
+        'keep_days' => 14,
+        'keep_events' => 50000,
     ],
 
     /*

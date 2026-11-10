@@ -3,6 +3,7 @@
 namespace HlsVideos\Services;
 
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Redis;
 use Illuminate\Support\Str;
 
 /**
@@ -81,6 +82,48 @@ class PlayerDebug
         }
 
         return [(string) $data[0], (string) $data[1], (string) $data[2]];
+    }
+
+    /**
+     * Keeps the events of one viewer in Redis (hls-videos.player_debug.redis),
+     * where every web node writes. Each entry is an array with the event fields.
+     */
+    public static function store(string $tenant, string $viewer, array $entries): void
+    {
+        $connection = config('hls-videos.player_debug.redis');
+        if (! $connection || ! $entries) {
+            return;
+        }
+        $key = static::logKey($tenant, $viewer);
+        $redis = Redis::connection($connection);
+        $redis->rpush($key, ...array_map(fn ($e) => json_encode($e, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE), $entries));
+        $redis->ltrim($key, -1 * (int) config('hls-videos.player_debug.keep_events', 50000), -1);
+        $redis->expire($key, 86400 * (int) config('hls-videos.player_debug.keep_days', 14));
+    }
+
+    /** The stored events of one viewer of the current tenant, in arrival order. */
+    public static function stored(string $viewer): array
+    {
+        $connection = config('hls-videos.player_debug.redis');
+        if (! $connection) {
+            return [];
+        }
+        $rows = Redis::connection($connection)->lrange(static::logKey(static::tenantId(), $viewer), 0, -1);
+
+        return array_values(array_filter(array_map(fn ($r) => json_decode($r, true), (array) $rows)));
+    }
+
+    public static function forget(string $viewer): void
+    {
+        $connection = config('hls-videos.player_debug.redis');
+        if ($connection) {
+            Redis::connection($connection)->del(static::logKey(static::tenantId(), $viewer));
+        }
+    }
+
+    private static function logKey(string $tenant, string $viewer): string
+    {
+        return "hls-player-debug-log:{$tenant}:{$viewer}";
     }
 
     private static function key(string $viewer): string

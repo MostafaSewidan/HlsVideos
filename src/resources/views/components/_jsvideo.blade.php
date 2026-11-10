@@ -347,6 +347,7 @@
         };
 
         const player = new Plyr(video, data);
+        PlayerLog.attachPlyr(player);
 
         player.on('ready', (event) => {
             if (loader) {
@@ -521,6 +522,7 @@
                 options: availableQualities,
                 forced: true,
                 onChange: newQuality => {
+                    PlayerLog.add('player.quality_change', { to: newQuality, hls: !!hls, t: video.currentTime });
                     const currentTime = video.currentTime;
                     const wasPlaying = !video.paused;
 
@@ -547,6 +549,8 @@
                 }
             } : {}
         });
+
+        PlayerLog.attachPlyr(player);
 
         player.on('ready', (event) => {
             if (loader) {
