@@ -49,6 +49,11 @@ return [
     |                  compat  = plain, built for older browsers
     */
     'player' => env('HLS_VIDEO_PLAYER', 'plyr'),
+
+    // Start playing as soon as the first segment is in, without waiting for the
+    // student to press play. The WebView may still refuse (no user gesture); the
+    // student then presses play as before.
+    'autoplay' => (bool) env('HLS_VIDEO_AUTOPLAY', true),
     'videojs' => [
         'version' => env('HLS_VIDEO_VIDEOJS_VERSION', '10.2.0'),
         'skin' => env('HLS_VIDEO_PLAYER_SKIN', 'neutral'),
@@ -199,9 +204,14 @@ return [
         'backup_domain' => env('HLS_VIDEO_STREAM_BACKUP_URL', 'stream.stepsio.com'),
         'fragment_first_byte_timeout_ms' => (int) env('HLS_VIDEO_CDN_TTFB_MS', 8000),
         'native_stall_seconds' => (int) env('HLS_VIDEO_CDN_NATIVE_STALL_SECONDS', 12),
-        // Before playing, load the thumb from Cloudflare; if it fails within this
-        // time but loads from Bunny, the student starts on Bunny. 0 = off.
-        'thumb_probe_timeout_ms' => (int) env('HLS_VIDEO_CDN_PROBE_MS', 4000),
+        // Before playing, the page requests probe_path from both CDNs at once.
+        // Cloudflare answers first: start there. The backup answers first: Cloudflare
+        // gets thumb_probe_timeout_ms more, then the student starts on the backup.
+        // Any answer counts (even a 404): this tests the connection, not the file.
+        // No answer from either within probe_max_ms: start on Cloudflare. 0 = off.
+        'thumb_probe_timeout_ms' => (int) env('HLS_VIDEO_CDN_PROBE_MS', 2000),
+        'probe_path' => env('HLS_VIDEO_CDN_PROBE_PATH', 'cdn-probe.gif'),
+        'probe_max_ms' => (int) env('HLS_VIDEO_CDN_PROBE_MAX_MS', 8000),
 
         'report' => [
             'enabled' => (bool) env('HLS_VIDEO_CDN_REPORT', true),

@@ -9,7 +9,8 @@
 
 <div class="hls-vjs-container" dir="ltr" data-fullscreen="{{ $fullScreenStatus === 'off' ? 'off' : 'on' }}">
     <media-i18n lang="{{ app()->getLocale() }}">
-        <video-player id="hls-vjs-player" poster="{{ $video->thumb_url }}">
+        {{-- The poster is set by the script once the CDN to use is known (chooseStartCdn). --}}
+        <video-player id="hls-vjs-player" data-poster="{{ $video->thumb_url }}">
             <{{ $videojsSkin['tag'] }} class="hls-vjs-skin">
                 @if ($videoType === 'hls')
                     {{-- No picture-in-picture, no casting (Chromecast / AirPlay). --}}

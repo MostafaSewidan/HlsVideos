@@ -182,11 +182,14 @@ class HlsVideo extends Model
         $thumbPath = VideoService::getMediaPath()."$this->id/thumb.jpg";
         $storageStreamDomain = config('hls-videos.storage_stream_domain');
 
-        if (isset($stream['thumb_disk'])) {
+        $disk = config('hls-videos.thumb_disk');
+        // A disk with no public url (the R2 API endpoint) holds the thumb at the
+        // same key the CDN serves: give the CDN url, the API one can't be opened.
+        if (isset($stream['thumb_disk']) || ! config("filesystems.disks.{$disk}.url")) {
             return "https://{$storageStreamDomain}/".$thumbPath;
-        } else {
-            return Storage::disk(config('hls-videos.thumb_disk'))->url($thumbPath);
         }
+
+        return Storage::disk($disk)->url($thumbPath);
     }
 
     public function getTempVideoAttribute()

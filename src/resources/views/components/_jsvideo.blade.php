@@ -9,6 +9,29 @@
 @endphp
 <script>
     const videoType = '{{ $videoType }}';
+    const AUTOPLAY = @json((bool) config('hls-videos.autoplay', true));
+
+    // Plays as soon as there is something to play. The WebView may refuse without
+    // a tap (autoplay policy): then the student presses play as before.
+    function autoplayWhenReady(video) {
+        if (!AUTOPLAY) return;
+        let tried = false;
+
+        function tryPlay() {
+            if (tried || !video.paused) return;
+            tried = true;
+            const result = video.play();
+            if (result && result.then) {
+                result.then(function() {
+                    PlayerLog.add('player.autoplay', { ok: true, t: video.currentTime });
+                }, function(e) {
+                    PlayerLog.add('player.autoplay', { ok: false, error: e && e.name, message: e && e.message });
+                });
+            }
+        }
+        video.addEventListener('canplay', tryPlay, { once: true });
+        if (video.readyState >= 3) tryPlay();
+    }
 
     async function parseM3U8Manifest(url) {
         try {
@@ -370,17 +393,17 @@
                 }
             });
             player.on('play', function() {
-                PlayerState.postMessage('Playing');
+                if (window.PlayerState) PlayerState.postMessage('Playing');
             });
 
             player.on('pause', function() {
-                PlayerState.postMessage('Paused');
+                if (window.PlayerState) PlayerState.postMessage('Paused');
             });
             player.on('controlsshown', (event) => {
-                Controls.postMessage('controlsshown');
+                if (window.Controls) Controls.postMessage('controlsshown');
             });
             player.on('controlshidden', (event) => {
-                Controls.postMessage('controlshidden');
+                if (window.Controls) Controls.postMessage('controlshidden');
             });
         @endif
     }
@@ -410,17 +433,19 @@
                 hlsVersion: typeof Hls !== 'undefined' ? Hls.version : null,
                 hlsSupported: typeof Hls !== 'undefined' ? Hls.isSupported() : null,
                 plyrLoaded: typeof Plyr !== 'undefined',
-                poster: video.poster || null
+                poster: video.dataset.poster || null,
+                autoplay: AUTOPLAY
             });
 
             const isHls = videoType === 'hls';
             const player = isHls ? (Hls.isSupported() ? 'hlsjs' : 'native') : 'mp4';
 
-            // Test the thumb first: a student who can't reach Cloudflare starts
-            // on Bunny right away instead of waiting for a segment timeout.
-            chooseStartCdn(video.poster, player, function(url) {
+            // Test both CDNs first: a student who can't reach Cloudflare starts on
+            // the backup right away instead of waiting for a segment timeout.
+            chooseStartCdn(video.dataset.poster || null, player, function(url) {
                 video.poster = url;
             }).then(function() {
+                autoplayWhenReady(video);
                 if (isHls) {
                     videoPlayerIoRun();
                 } else {
@@ -578,17 +603,17 @@
                 }
             });
             player.on('play', function() {
-                PlayerState.postMessage('Playing');
+                if (window.PlayerState) PlayerState.postMessage('Playing');
             });
 
             player.on('pause', function() {
-                PlayerState.postMessage('Paused');
+                if (window.PlayerState) PlayerState.postMessage('Paused');
             });
             player.on('controlsshown', (event) => {
-                Controls.postMessage('controlsshown');
+                if (window.Controls) Controls.postMessage('controlsshown');
             });
             player.on('controlshidden', (event) => {
-                Controls.postMessage('controlshidden');
+                if (window.Controls) Controls.postMessage('controlshidden');
             });
         @endif
     }

@@ -9,7 +9,9 @@
         ],
         'fragTtfbMs' => (int) ($cdnFallback['fragment_first_byte_timeout_ms'] ?? 8000),
         'nativeStallSeconds' => (int) ($cdnFallback['native_stall_seconds'] ?? 12),
-        'probeTimeoutMs' => (int) ($cdnFallback['thumb_probe_timeout_ms'] ?? 4000),
+        'probeTimeoutMs' => (int) ($cdnFallback['thumb_probe_timeout_ms'] ?? 2000),
+        'probePath' => ltrim((string) ($cdnFallback['probe_path'] ?? 'cdn-probe.gif'), '/'),
+        'probeMaxMs' => (int) ($cdnFallback['probe_max_ms'] ?? 8000),
         'reportUrl' => ($cdnFallback['report']['enabled'] ?? true) && \Illuminate\Support\Facades\Route::has('hls.videos.cdn-switch')
             ? route('hls.videos.cdn-switch')
             : null,
@@ -209,73 +211,106 @@
         return trySwitch;
     }
 
-    // Picks the CDN to start on from the thumbnail, before the video loads.
-    // The thumb sits on the same CDN, so a network that can't reach Cloudflare
-    // can't load it either. That avoids waiting for a segment timeout:
-    // - thumb loads from Cloudflare                  -> start on Cloudflare,
-    // - it fails or hangs past probeTimeoutMs, but
-    //   loads from Bunny                             -> start on Bunny (this is the one switch),
-    // - fails on both (missing thumb)                -> start on Cloudflare as usual.
-    // Old videos keep their thumb on another disk: no probe, normal behavior.
-    // setPoster(url) gets the url that worked. player = 'hlsjs' | 'native' | 'mp4'.
+    // Picks the CDN to start on, before the video loads: probePath is requested
+    // from both CDNs at the same time.
+    // - Cloudflare answers                              -> start on Cloudflare,
+    // - the backup answers, and Cloudflare doesn't
+    //   within probeTimeoutMs after it (or fails)        -> start on the backup (the one switch),
+    // - neither answers within probeMaxMs (offline)     -> start on Cloudflare as usual.
+    // Any HTTP answer counts, even a 404: this tests that the host is reachable.
+    // fetch + abort, not an <img>: a request to a blocked host hangs for minutes,
+    // and an image still loading keeps the page from finishing loading.
+    // The poster is set only after this, on the CDN chosen (setPoster), so the
+    // page never waits on a Cloudflare image either. player = 'hlsjs' | 'native' | 'mp4'.
     function chooseStartCdn(posterUrl, player, setPoster) {
         const cfg = CdnFallback.config;
-        if (!CdnFallback.enabled || !cfg.probeTimeoutMs || !posterUrl || !CdnFallback.isCdnUrl(posterUrl)) {
-            if (window.PlayerLog) PlayerLog.add('cdn.probe_skipped', { poster: posterUrl || null, isCdn: posterUrl ? CdnFallback.isCdnUrl(posterUrl) : false });
+        const showPoster = function() {
+            if (posterUrl) setPoster(CdnFallback.rewrite(posterUrl));
+        };
+        if (!CdnFallback.enabled || !cfg.probeTimeoutMs || !cfg.probePath || typeof fetch !== 'function') {
+            if (window.PlayerLog) PlayerLog.add('cdn.probe_skipped', { enabled: CdnFallback.enabled, probePath: cfg.probePath || null, fetch: typeof fetch === 'function' });
+            showPoster();
             return Promise.resolve();
         }
 
-        function onHost(url, host) {
-            const u = new URL(url, window.location.href);
-            u.host = host;
-            return u.toString();
-        }
+        const bucket = Math.floor(Date.now() / 60000); // new url every minute: no cached answer
 
-        function loadImage(url) {
+        function probe(which) {
+            const url = 'https://' + cfg.hosts[which] + '/' + cfg.probePath + '?m=' + bucket;
+            const controller = typeof AbortController === 'function' ? new AbortController() : null;
             const started = Date.now();
-            return new Promise(function(resolve) {
-                const img = new Image();
-                let done = false;
-                const timer = setTimeout(function() {
-                    finish(false);
-                }, cfg.probeTimeoutMs);
-
-                function finish(ok) {
-                    if (done) return;
-                    done = true;
-                    if (window.PlayerLog) PlayerLog.add('cdn.probe', { url: url, ok: ok, ms: Date.now() - started, timedOut: !ok && Date.now() - started >= cfg.probeTimeoutMs });
-                    clearTimeout(timer);
-                    img.onload = img.onerror = null;
-                    resolve(ok);
-                }
-                img.onload = function() {
-                    finish(true);
-                };
-                img.onerror = function() {
-                    finish(false);
-                };
-                img.src = url;
+            const promise = fetch(url, {
+                mode: 'no-cors',
+                cache: 'no-store',
+                credentials: 'omit',
+                signal: controller ? controller.signal : undefined
+            }).then(function() {
+                return { ok: true, ms: Date.now() - started };
+            }, function(e) {
+                return { ok: false, ms: Date.now() - started, error: e && e.name };
+            }).then(function(result) {
+                if (window.PlayerLog) PlayerLog.add('cdn.probe', Object.assign({ cdn: which, url: url }, result));
+                return result;
             });
+
+            return {
+                url: url,
+                promise: promise,
+                abort: function() {
+                    if (controller) controller.abort();
+                }
+            };
         }
 
-        const primaryUrl = onHost(posterUrl, cfg.hosts.primary);
-        const backupUrl = onHost(posterUrl, cfg.hosts.backup);
+        return new Promise(function(resolve) {
+            const primary = probe('primary');
+            const backup = probe('backup');
+            let done = false;
+            let primaryFailed = false;
+            let backupOk = false;
+            let graceTimer = null;
 
-        return loadImage(primaryUrl).then(function(ok) {
-            if (ok) {
-                setPoster(primaryUrl);
-                return;
+            function finish(cdn, reason) {
+                if (done) return;
+                done = true;
+                clearTimeout(graceTimer);
+                clearTimeout(maxTimer);
+                if (window.PlayerLog) PlayerLog.add('cdn.probe_result', { start: cdn, reason: reason });
+                if (cdn === 'backup') {
+                    primary.abort();
+                    CdnFallback.switchCdn({
+                        reason: 'probe_' + reason,
+                        player: player,
+                        url: primary.url,
+                        httpStatus: null,
+                        position: 0
+                    });
+                }
+                showPoster();
+                resolve();
             }
-            return loadImage(backupUrl).then(function(backupOk) {
-                if (!backupOk) return;
-                setPoster(backupUrl);
-                CdnFallback.switchCdn({
-                    reason: 'thumb_probe',
-                    player: player,
-                    url: primaryUrl,
-                    httpStatus: null,
-                    position: 0
-                });
+
+            const maxTimer = setTimeout(function() {
+                primary.abort();
+                backup.abort();
+                finish('primary', 'no_answer');
+            }, Math.max(cfg.probeMaxMs, cfg.probeTimeoutMs));
+
+            primary.promise.then(function(r) {
+                if (r.ok) return finish('primary', 'primary_ok');
+                primaryFailed = true;
+                if (backupOk) finish('backup', 'primary_failed');
+            });
+            backup.promise.then(function(r) {
+                if (!r.ok) {
+                    if (primaryFailed) finish('primary', 'both_failed');
+                    return;
+                }
+                backupOk = true;
+                if (primaryFailed) return finish('backup', 'primary_failed');
+                graceTimer = setTimeout(function() {
+                    finish('backup', 'primary_slow');
+                }, cfg.probeTimeoutMs);
             });
         });
     }

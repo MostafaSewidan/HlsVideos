@@ -24,13 +24,37 @@
 
         const isHls = media.tagName.toLowerCase() === 'hlsjs-video';
         const sourceUrl = media.dataset.src;
+        const AUTOPLAY = @json((bool) config('hls-videos.autoplay', true));
+
+        // Plays as soon as there is something to play. The WebView may refuse
+        // without a tap (autoplay policy): then the student presses play as before.
+        function autoplayWhenReady() {
+            if (!AUTOPLAY) return;
+            let tried = false;
+
+            function tryPlay() {
+                if (tried || !media.paused) return;
+                tried = true;
+                const result = media.play();
+                if (result && result.then) {
+                    result.then(function() {
+                        PlayerLog.add('player.autoplay', { ok: true });
+                    }, function(e) {
+                        PlayerLog.add('player.autoplay', { ok: false, error: e && e.name, message: e && e.message });
+                    });
+                }
+            }
+            media.addEventListener('canplay', tryPlay, { once: true });
+            if (media.readyState >= 3) tryPlay();
+        }
 
         PlayerLog.attachMedia(media, 'videojs');
         PlayerLog.add('player.start', {
             player: 'videojs',
             tag: media.tagName.toLowerCase(),
             mse: !!(window.MediaSource || window.ManagedMediaSource),
-            poster: playerEl.getAttribute('poster')
+            poster: playerEl.dataset.poster || null,
+            autoplay: AUTOPLAY
         });
         customElements.whenDefined('hlsjs-video').then(function() {
             PlayerLog.add('player.hlsjs_video_defined', null);
@@ -48,10 +72,11 @@
         // Test the thumb first: a student who can't reach Cloudflare starts on
         // Bunny right away instead of waiting for a segment timeout.
         const hasMse = !!(window.MediaSource || window.ManagedMediaSource);
-        chooseStartCdn(playerEl.getAttribute('poster'), isHls ? (hasMse ? 'hlsjs' : 'native') : 'mp4',
+        chooseStartCdn(playerEl.dataset.poster || null, isHls ? (hasMse ? 'hlsjs' : 'native') : 'mp4',
             function(url) {
                 playerEl.setAttribute('poster', url);
             }).then(function() {
+                autoplayWhenReady();
             if (isHls) {
                 startHls();
             } else {

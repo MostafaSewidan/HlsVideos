@@ -16,7 +16,8 @@
         <i class="fa fa-chevron-left"></i>
     </div>
     <div class="video-overlay-right" onclick="alert('here')"></div> --}}
-    <video id="player" playsinline controls poster="{{ $video->thumb_url }}" class="plyr">
+    {{-- The poster is set by the script once the CDN to use is known (chooseStartCdn). --}}
+    <video id="player" playsinline controls data-poster="{{ $video->thumb_url }}" class="plyr">
         @if ($videoType === 'hls')
             <source src="{{ route(config('hls-videos.access_route_stream'), [$video->id]) }}"
                 type="application/x-mpegURL" />
