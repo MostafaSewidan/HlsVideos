@@ -1,9 +1,15 @@
-# CDN fallback (Cloudflare → Bunny)
+# CDN fallback (Cloudflare → backup server)
 
 Some networks in Egypt sometimes can't reach the Cloudflare stream domain
 (`storage_stream_domain`, e.g. `stepsio-stream.org`). When that happens the player
-switches the viewer to the Bunny pull zone (`cdn_fallback.backup_domain`, e.g.
-`stream.stepsio.com`) and keeps playing from the same second.
+switches the viewer to our backup server (`cdn_fallback.backup_domain`,
+`streamer.stepsio.com`) and keeps playing from the same second.
+
+The backup is an nginx reverse proxy + cache on a Hetzner server (managed in
+Ploi, site `streamer.stepsio.com`). It pulls from `stepsio-stream.org` (R2 behind
+Cloudflare) on a cache miss, so students reach it without going through
+Cloudflare. It used to be a Bunny pull zone on `stream.stepsio.com`; that
+hostname still points to Bunny, so it must not be used as `backup_domain`.
 
 ## How it works
 
@@ -19,7 +25,7 @@ fallback only swaps the CDN host in those URLs.
 | Poster | image fails to load | swaps the poster host only (a missing thumbnail looks the same as a blocked one, so it doesn't move the video) |
 
 - Every video page starts on Cloudflare. The switch happens once, Cloudflare →
-  Bunny, and the rest of the video plays from Bunny. It never goes back to
+  backup, and the rest of the video plays from the backup. It never goes back to
   Cloudflare on the same page. Closing the video and opening it again (or opening
   another video) starts on Cloudflare again. Nothing is remembered on the device.
 - hls.js switches only when a segment got no answer: a timeout, status 0 (blocked /
@@ -43,7 +49,7 @@ If the webhook isn't configured, the event is written to the log instead.
 | Key | Env | Default |
 |---|---|---|
 | `enabled` | `HLS_VIDEO_CDN_FALLBACK` | `true` |
-| `backup_domain` | `HLS_VIDEO_STREAM_BACKUP_URL` | `stream.stepsio.com` (empty = off) |
+| `backup_domain` | `HLS_VIDEO_STREAM_BACKUP_URL` | `streamer.stepsio.com` (empty = off) |
 | `fragment_first_byte_timeout_ms` | `HLS_VIDEO_CDN_TTFB_MS` | `8000` |
 | `native_stall_seconds` | `HLS_VIDEO_CDN_NATIVE_STALL_SECONDS` | `12` |
 | `report.enabled` | `HLS_VIDEO_CDN_REPORT` | `true` |
@@ -55,14 +61,27 @@ If the webhook isn't configured, the event is written to the log instead.
 
 With `config:cache`, the app's own `config/hls-videos.php` must contain this section.
 
-## Bunny checklist
+## Backup server checklist
 
-- The pull zone serves the same paths as the R2 public bucket:
-  `https://stream.stepsio.com/<media_folder>/<video>/<quality>/index-0.ts`, the
-  thumbnail, and `temp-videos/...` for mp4.
-- CORS: responses carry `Access-Control-Allow-Origin` (hls.js loads segments with
-  XHR). Bunny → Pull Zone → Headers → "Add CORS headers" with `ts`, `m3u8`, `jpg`,
-  `mp4` in the extension list.
+The nginx config lives on the server, not in this repo (Ploi → server `cdn` →
+site `streamer.stepsio.com` → nginx config).
+
+- Same paths as the R2 public bucket:
+  `https://streamer.stepsio.com/<media_folder>/<video>/<quality>/index-0.ts`, the
+  thumbnail, and `temp-videos/...` for mp4. nginx proxies everything to
+  `https://stepsio-stream.org` with `Host` and SNI set to that name.
+- CORS: every response carries `Access-Control-Allow-Origin: *` (hls.js loads
+  segments with XHR). The headers are set once at `server` level, so a `location`
+  must not use `add_header`, or it drops them all.
+- Cache: `proxy_cache hls`, key `$uri` (query strings ignored), segments 30 days,
+  playlists 1 hour, 404s 1 minute. `X-Cache` shows HIT/MISS.
+- Disk: the cache has its own volume. `/etc/nginx/conf.d/hls-cache.conf`:
+  `proxy_cache_path /mnt/HC_Volume_107261624/hls levels=1:2 keys_zone=hls:200m
+  max_size=170g min_free=15g inactive=14d use_temp_path=off;`. A volume ~90% full
+  is normal: the cache is full and nginx drops the least used files.
+- Check: `curl -I https://streamer.stepsio.com/<path to a segment>` twice. Expect
+  `200`, `access-control-allow-origin: *`, and `x-cache: MISS` then `HIT`.
 - Test: block `stepsio-stream.org` (DevTools → Network request blocking, or
   `/etc/hosts`) and play a video. Expect a single `[CDN] switching primary -> backup`
-  in the console, playback continuing, and one event in steps_monitoring.
+  in the console, playback continuing from `streamer.stepsio.com`, and one event in
+  steps_monitoring.

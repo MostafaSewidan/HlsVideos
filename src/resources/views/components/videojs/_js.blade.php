@@ -70,7 +70,7 @@
         });
 
         // Test the thumb first: a student who can't reach Cloudflare starts on
-        // Bunny right away instead of waiting for a segment timeout.
+        // the backup right away instead of waiting for a segment timeout.
         const hasMse = !!(window.MediaSource || window.ManagedMediaSource);
         chooseStartCdn(playerEl.dataset.poster || null, isHls ? (hasMse ? 'hlsjs' : 'native') : 'mp4',
             function(url) {
@@ -167,14 +167,14 @@
                         !segmentNeverArrived(data)) return;
 
                     // A request sent to Cloudflare before the switch failing now says
-                    // nothing about Bunny. Just carry on.
+                    // nothing about the backup. Just carry on.
                     const usedCdn = cdnUsedFor.get(failedUrl);
                     if (usedCdn && usedCdn !== CdnFallback.current()) {
                         if (data.fatal) hls.startLoad(media.currentTime || -1);
                         return;
                     }
 
-                    // First failure: move to Bunny. hls.js' own retry then goes
+                    // First failure: move to the backup. hls.js' own retry then goes
                     // through xhrSetup and lands on the new host.
                     if (CdnFallback.switchCdn({
                             reason: data.details,

@@ -495,7 +495,7 @@ class VideoService
     }
 
     /**
-     * True when the request asks for the backup CDN (Bunny) and one is configured.
+     * True when the request asks for the backup CDN (our own server) and one is configured.
      */
     static function wantsBackupCdn(): bool
     {

@@ -180,11 +180,11 @@ return [
 
     /*
     |--------------------------------------------------------------------------
-    | CDN fallback (Cloudflare -> Bunny)
+    | CDN fallback (Cloudflare -> backup server)
     |--------------------------------------------------------------------------
     | Some networks in Egypt can't reach the Cloudflare stream domain
     | (storage_stream_domain). When segments fail to load there, the player
-    | switches to backup_domain (a Bunny pull zone with the same paths) and
+    | switches to backup_domain (our nginx cache server, same paths) and
     | keeps playing from the same second. It stays on backup_domain until the
     | page is closed; every new video page starts on the primary CDN again.
     |
@@ -201,7 +201,7 @@ return [
     */
     'cdn_fallback' => [
         'enabled' => (bool) env('HLS_VIDEO_CDN_FALLBACK', true),
-        'backup_domain' => env('HLS_VIDEO_STREAM_BACKUP_URL', 'stream.stepsio.com'),
+        'backup_domain' => env('HLS_VIDEO_STREAM_BACKUP_URL', 'streamer.stepsio.com'),
         'fragment_first_byte_timeout_ms' => (int) env('HLS_VIDEO_CDN_TTFB_MS', 8000),
         'native_stall_seconds' => (int) env('HLS_VIDEO_CDN_NATIVE_STALL_SECONDS', 12),
         // Before playing, the page requests probe_path from both CDNs at once.

@@ -1,4 +1,4 @@
-{{-- CDN fallback (Cloudflare -> Bunny), shared by the Plyr and Video.js players. --}}
+{{-- CDN fallback (Cloudflare -> our backup server), shared by the Plyr and Video.js players. --}}
 @php
     $cdnFallback = config('hls-videos.cdn_fallback', []);
     $cdnConfig = [
@@ -21,16 +21,16 @@
 @endphp
 <script>
     /*
-     * CDN fallback: Cloudflare (primary) -> Bunny (backup).
+     * CDN fallback: Cloudflare (primary) -> our backup server (backup).
      * Both CDNs serve the same paths, so switching is just swapping the host.
      * Every video page starts on Cloudflare. On the first failure it moves to
-     * Bunny for the rest of this page and never goes back. Opening the video
+     * the backup for the rest of this page and never goes back. Opening the video
      * again (or another video) starts on Cloudflare again.
      */
     const CdnFallback = (function(cfg) {
         let current = 'primary';
 
-        // Older versions remembered Bunny on the device. Drop that.
+        // Older versions remembered the backup on the device. Drop that.
         try {
             localStorage.removeItem('hls_cdn_preference');
         } catch (e) {}
@@ -60,7 +60,7 @@
         }
 
         // Our own playlist urls (master / vd.m3u8): add ?cdn=backup so the server
-        // writes Bunny segment links. Used by the native (iOS) player.
+        // writes backup segment links. Used by the native (iOS) player.
         function withCdnParam(url) {
             if (!cfg.enabled || !url) return url;
             try {
@@ -73,7 +73,7 @@
             }
         }
 
-        // Moves to Bunny, once. Returns false when already on Bunny.
+        // Moves to the backup, once. Returns false when already on it.
         function switchCdn(details) {
             if (window.PlayerLog) PlayerLog.add(canSwitch() ? 'cdn.switch' : 'cdn.switch_refused', details || null);
             if (!canSwitch()) return false;

@@ -456,7 +456,7 @@
     });
 
     // Direct mp4 from the CDN: starts on the CDN picked by the thumb test,
-    // moves to Bunny on failure.
+    // moves to the backup on failure.
     function startMp4(video) {
         const mp4Source = video.querySelector('source');
         if (mp4Source && CdnFallback.isCdnUrl(mp4Source.src)) {

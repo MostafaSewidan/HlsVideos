@@ -42,7 +42,7 @@ Route::middleware(config('hls-videos.exports.middleware', ['web']))
     });
 
 /*
-| Called by the player each time it switches CDN (Cloudflare <-> Bunny).
+| Called by the player each time it switches CDN (Cloudflare <-> backup server).
 | No `web` group: the page in the app's WebView has no session or CSRF token.
 */
 Route::post('hls/videos/cdn-switch', [CdnSwitchController::class, 'store'])
