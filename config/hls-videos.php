@@ -287,6 +287,27 @@ return [
         'delete_enabled' => (bool) env('HLS_ARCHIVE_DELETE_ENABLED', false),
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Offline download (one file per quality, no zip)
+    |--------------------------------------------------------------------------
+    | The app downloads one .ts made of a quality's segments from the download
+    | Worker (steps-io/steps-download-worker), through two signed links: url
+    | (Cloudflare) and backup_url (our server, nginx /dl/ -> the Worker).
+    | Plan: base_backend docs/hls-offline-download-plan.md.
+    |
+    | secret           same value as the Worker's DOWNLOAD_URL_SECRET.
+    | url_ttl_minutes  how long a link can start a download. A started one
+    |                  keeps going; a resume after that needs a new link.
+    */
+    'offline_download' => [
+        'enabled' => (bool) env('HLS_OFFLINE_DOWNLOAD', false),
+        'url' => env('HLS_OFFLINE_DOWNLOAD_URL', 'https://dl.stepsio-stream.org'),
+        'backup_url' => env('HLS_OFFLINE_DOWNLOAD_BACKUP_URL', 'https://streamer.stepsio.com/dl'),
+        'secret' => env('HLS_OFFLINE_DOWNLOAD_SECRET'),
+        'url_ttl_minutes' => (int) env('HLS_OFFLINE_DOWNLOAD_TTL', 60),
+    ],
+
     'storages' => [
         'r2' => [
             'disk_name' => 'r2',

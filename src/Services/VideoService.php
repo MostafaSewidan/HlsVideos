@@ -403,6 +403,22 @@ class VideoService
         ];
     }
 
+    /**
+     * The video's AES-128 key (16 bytes), for the stream's secret.key and the
+     * offline download's key endpoint. Callers check who is asking first.
+     */
+    static function keyResponse(HlsVideo $video)
+    {
+        if (! isset($video->stream_data['hls_key'])) {
+            abort(404);
+        }
+
+        return response(base64_decode($video->stream_data['hls_key']), 200)
+            ->header('Content-Type', 'application/octet-stream')
+            ->header('Content-Disposition', 'inline; filename="key.key"')
+            ->header('Cache-Control', 'no-store');
+    }
+
     static function getStreamFileContent($videoId, $quality = null, $file = null, $domain = null)
     {
         try {
