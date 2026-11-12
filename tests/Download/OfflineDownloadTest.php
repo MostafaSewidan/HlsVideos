@@ -90,6 +90,27 @@ class OfflineDownloadTest extends TestCase
         ], $options);
     }
 
+    public function test_the_container_built_service_reads_the_stream_disk(): void
+    {
+        // The default disk is not the stream disk, like on production.
+        $this->app['config']->set('filesystems.default', 'local');
+        $this->quality('720', [100, 200]);
+        $this->app->instance(HlsVideoExportRepository::class, new class extends HlsVideoExportRepository {
+            public function __construct()
+            {
+            }
+
+            public function qualities(HlsVideo $video): Collection
+            {
+                return collect(['720']);
+            }
+        });
+
+        $options = $this->app->make(OfflineDownload::class)->options($this->video());
+
+        $this->assertSame([['quality' => '720', 'size' => 300, 'duration' => 20.0]], $options);
+    }
+
     public function test_options_throw_when_nothing_can_be_downloaded(): void
     {
         $this->expectException(DownloadUnavailableException::class);
