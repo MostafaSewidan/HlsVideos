@@ -301,7 +301,7 @@ return [
     |                  keeps going; a resume after that needs a new link.
     */
     'offline_download' => [
-        'enabled' => (bool) env('HLS_OFFLINE_DOWNLOAD', true),
+        'enabled' => (bool) env('HLS_OFFLINE_DOWNLOAD', false),
         'url' => env('HLS_OFFLINE_DOWNLOAD_URL', 'https://dl.stepsio-stream.org'),
         'backup_url' => env('HLS_OFFLINE_DOWNLOAD_BACKUP_URL', 'https://streamer.stepsio.com/dl'),
         'secret' => env('HLS_OFFLINE_DOWNLOAD_SECRET'),
