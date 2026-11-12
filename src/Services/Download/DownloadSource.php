@@ -26,12 +26,9 @@ class DownloadSource
     const SEGMENT_NAME = '/^[A-Za-z0-9._-]+\.ts$/';
     const QUALITY_NAME = '/^[A-Za-z0-9_-]{1,16}$/';
 
-    private ?Filesystem $disk;
-
-    public function __construct(?Filesystem $disk = null)
-    {
-        $this->disk = $disk;
-    }
+    // Always the stream disk. Not a constructor argument on purpose: the
+    // container would fill a Filesystem argument with the default disk.
+    private ?Filesystem $disk = null;
 
     /**
      * @throws DownloadUnavailableException
